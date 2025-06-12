@@ -11,11 +11,13 @@ def compute_volatility(
 
     This function accounts for uneven time intervals between data points
     and automatically normalizes timestamps to milliseconds.
-    The value is typically the log of the price.
+    The values in the input data points are assumed to be log-prices,
+    conventionally using the natural logarithm (base e).
 
     Args:
         data_points: A list of tuples, where each tuple contains a
-                     Unix timestamp (s, ms, us, or ns) and a float value.
+                     Unix timestamp (s, ms, us, or ns) and a float value
+                     representing the log-price.
 
     Returns:
         The calculated volatility per minute, or None if computation is not possible.
