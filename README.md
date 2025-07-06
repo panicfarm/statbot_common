@@ -11,12 +11,12 @@ This package provides common, reusable utilities for statistical analysis of mar
 You can install this package directly from GitHub:
 
 ```bash
-pip install git+https://github.com/YOUR_USERNAME/statbot_common.git
+pip install git+https://github.com/panicfarm/statbot_common.git
 ```
 
 For development (includes pytest):
 ```bash
-pip install git+https://github.com/YOUR_USERNAME/statbot_common.git[dev]
+pip install git+https://github.com/panicfarm/statbot_common.git[dev]
 ```
 
 ## Quick Start
