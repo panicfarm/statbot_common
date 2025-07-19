@@ -2,22 +2,22 @@ import math
 import logging
 from typing import List, Tuple, Optional
 from .timestamp import normalize_timestamp_to_ms
+from .protocols import HasPrice
 
 def compute_volatility(
-    data_points: List[Tuple[int, float]],
+    data_points: List[Tuple[int, HasPrice]],
 ) -> Optional[float]:
     """
-    Compute volatility from a list of (timestamp, value) tuples.
+    Compute volatility from a list of (timestamp, data) tuples.
 
     This function accounts for uneven time intervals between data points
     and automatically normalizes timestamps to milliseconds.
-    The values in the input data points are assumed to be log-prices,
-    conventionally using the natural logarithm (base e).
+    The data objects are expected to conform to the HasPrice protocol.
 
     Args:
         data_points: A list of tuples, where each tuple contains a
-                     Unix timestamp (s, ms, us, or ns) and a float value
-                     representing the log-price.
+                     Unix timestamp (s, ms, us, or ns) and an object
+                     with a 'price' attribute.
 
     Returns:
         The calculated volatility per minute, or None if computation is not possible.
@@ -26,13 +26,27 @@ def compute_volatility(
         logging.debug("Volatility calc: Not enough data points (< 2).")
         return None
 
-    # Normalize all timestamps to milliseconds first
-    normalized_data = [
-        (normalize_timestamp_to_ms(ts), value) for ts, value in data_points
-    ]
+    # Extract log-prices and normalize timestamps
+    log_price_data = []
+    for ts, data in data_points:
+        if hasattr(data, 'price'):
+            try:
+                log_price_data.append(
+                    (normalize_timestamp_to_ms(ts), math.log(data.price))
+                )
+            except (ValueError, TypeError):
+                logging.warning(f"Could not process price: {data.price}. Skipping entry.")
+        else:
+            logging.warning(f"Data object missing 'price' attribute. Skipping entry.")
+
+
+    if len(log_price_data) < 2:
+        logging.debug("Volatility calc: Not enough valid data points after filtering.")
+        return None
+
 
     # Ensure data is sorted by timestamp, as it may not be guaranteed.
-    sorted_data = sorted(normalized_data, key=lambda x: x[0])
+    sorted_data = sorted(log_price_data, key=lambda x: x[0])
 
     delta_values = []
     delta_times_minutes = []

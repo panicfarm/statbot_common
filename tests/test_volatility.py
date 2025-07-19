@@ -1,33 +1,33 @@
-import math
 import pytest
 from statbot_common import compute_volatility
+from dataclasses import dataclass
+
+@dataclass
+class Trade:
+    price: float
 
 def test_volatility_not_enough_data():
     """Test that volatility returns None if there are fewer than 2 data points."""
-    assert compute_volatility([(1, 100.0)]) is None
+    assert compute_volatility([(1, Trade(price=100.0))]) is None
     assert compute_volatility([]) is None
 
 def test_volatility_constant_price():
     """Test that volatility is zero for a constant price."""
     data = [
-        (1678886400000, 100.0),
-        (1678886401000, 100.0),
-        (1678886402000, 100.0),
+        (1678886400000, Trade(price=100.0)),
+        (1678886401000, Trade(price=100.0)),
+        (1678886402000, Trade(price=100.0)),
     ]
-    # Use pytest.approx to handle potential floating point inaccuracies
     assert compute_volatility(data) == pytest.approx(0.0)
 
 def test_volatility_varied_price():
-    """
-    Test a basic volatility calculation with a known varied price series.
-    This test uses data similar to the original project's tests.
-    """
+    """Test a basic volatility calculation with a known varied price series."""
     base_time_ms = 1234567890000
     data = [
-        (base_time_ms + 0,    math.log(250.00)),
-        (base_time_ms + 2000, math.log(250.50)),
-        (base_time_ms + 5000, math.log(250.25)),
-        (base_time_ms + 9000, math.log(251.00)),
+        (base_time_ms + 0,    Trade(price=250.00)),
+        (base_time_ms + 2000, Trade(price=250.50)),
+        (base_time_ms + 5000, Trade(price=250.25)),
+        (base_time_ms + 9000, Trade(price=251.00)),
     ]
     
     # Manual calculation for verification:
@@ -43,17 +43,14 @@ def test_volatility_varied_price():
     assert compute_volatility(data) == pytest.approx(expected_vol, abs=1e-5)
 
 def test_volatility_with_different_timestamp_units():
-    """
-    Test that volatility calculation works correctly with mixed timestamp resolutions.
-    """
-    # Timestamps in s, ms, ns
+    """Test that calculation works correctly with mixed timestamp resolutions."""
     base_time_s = 1234567890
     data = [
-        (base_time_s,               math.log(250.00)), # seconds
-        ((base_time_s + 2) * 1000,  math.log(250.50)), # milliseconds
-        ((base_time_s + 5) * 1_000_000_000, math.log(250.25)), # nanoseconds
+        (base_time_s,                          Trade(price=250.00)), # seconds
+        ((base_time_s + 2) * 1000,             Trade(price=250.50)), # milliseconds
+        ((base_time_s + 5) * 1_000_000_000,    Trade(price=250.25)), # nanoseconds
     ]
-    
+
     # Manual calculation:
     # d_t = [2000, 3000] ms -> [2/60, 3/60] min
     # d_v approx = [0.001998, -0.000998]
@@ -69,10 +66,37 @@ def test_volatility_with_unsorted_data():
     """Test that the function correctly sorts data before calculation."""
     base_time_ms = 1234567890000
     data = [
-        (base_time_ms + 9000, math.log(251.00)), # Out of order
-        (base_time_ms + 0,    math.log(250.00)),
-        (base_time_ms + 5000, math.log(250.25)),
-        (base_time_ms + 2000, math.log(250.50)),
+        (base_time_ms + 9000, Trade(price=251.00)), # Out of order
+        (base_time_ms + 0,    Trade(price=250.00)),
+        (base_time_ms + 5000, Trade(price=250.25)),
+        (base_time_ms + 2000, Trade(price=250.50)),
     ]
     expected_vol = 0.0096443
-    assert compute_volatility(data) == pytest.approx(expected_vol, abs=1e-5) 
+    assert compute_volatility(data) == pytest.approx(expected_vol, abs=1e-5)
+
+def test_volatility_with_missing_price():
+    """Test robustness against objects without a 'price' attribute."""
+    @dataclass
+    class BadTrade:
+        value: float
+
+    data = [
+        (1678886400000, Trade(price=100.0)),
+        (1678886460000, BadTrade(value=101.0)),
+        (1678886520000, Trade(price=100.5)),
+    ]
+    # The bad trade is skipped, calculation happens on first and third.
+    # Time delta = 2 mins. Log price delta = log(100.5/100) = 0.004987
+    # Numerator = 0.004987^2 = 0.00002487
+    # Denominator = 2
+    # Variance = num/den = 0.000012435
+    # Vol = sqrt(variance) = 0.003526
+    vol = compute_volatility(data)
+    assert vol == pytest.approx(0.003526, abs=1e-5)
+    
+    # Test with only one valid point remaining
+    data_one_valid = [
+        (1678886400000, Trade(price=100.0)),
+        (1678886460000, BadTrade(value=101.0)),
+    ]
+    assert compute_volatility(data_one_valid) is None 

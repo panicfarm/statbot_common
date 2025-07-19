@@ -2,9 +2,10 @@
 
 This package provides common, reusable utilities for statistical analysis of market data, including:
 
-- **`SlidingWindow`**: A generic, time-based sliding window data structure that handles multiple timestamp resolutions (s, ms, μs, ns).
-- **`compute_volatility`**: A standalone volatility calculation function for time-series data.
-- **`normalize_timestamp_to_ms`**: Automatic timestamp normalization utility.
+- **`SlidingWindow`**: A generic, time-based sliding window that can store any Python object.
+- **`compute_volatility`**: Calculates volatility from time-series data. Found in `volatility.py`.
+- **`compute_total_size`**: Calculates the total size from time-series data. Found in `size.py`.
+- **Protocols (`HasPrice`, `HasSize`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
 
 ## Installation
 
@@ -22,35 +23,43 @@ pip install git+https://github.com/panicfarm/statbot_common.git[dev]
 ## Quick Start
 
 ```python
-from statbot_common import SlidingWindow, compute_volatility
-import math
+from statbot_common import SlidingWindow, compute_volatility, compute_total_size
+from dataclasses import dataclass
 import time
 
+# Define a data structure for our trades
+@dataclass
+class Trade:
+    price: float
+    size: float
+
 # Create a sliding window that holds 60 seconds of data
-price_window = SlidingWindow(window_duration_ms=60 * 1000)
+trade_window = SlidingWindow(window_duration_ms=60 * 1000)
 
-# Add price data (timestamps can be in seconds, ms, μs, or ns)
-price_window.add(1678886400, 100.5)      # seconds
-price_window.add(1678886410000, 101.2)   # milliseconds  
-price_window.add(1678886420000000, 101.8) # microseconds
+# Add rich trade objects to the window
+trade_window.add(1678886400, Trade(price=100.5, size=1.5))      # seconds
+trade_window.add(1678886410000, Trade(price=101.2, size=2.0))   # milliseconds
+trade_window.add(1678886420000000, Trade(price=101.8, size=0.8)) # microseconds
 
-# Get current data in the window (auto-expires old data)
-recent_data = price_window.get_window_data()
-print(f"Data points in window: {len(recent_data)}")
+# Get current data in the window
+recent_trades = trade_window.get_window_data()
+print(f"Data points in window: {len(recent_trades)}")
 
-# Calculate volatility from price data
-if len(recent_data) > 1:
-    # For volatility, data should be (timestamp, log_price)
-    log_price_data = [(ts, math.log(price)) for ts, price in recent_data]
-    volatility = compute_volatility(log_price_data)
+# Calculate volatility and total size from the same data
+if len(recent_trades) > 1:
+    volatility = compute_volatility(recent_trades)
+    total_size = compute_total_size(recent_trades)
     print(f"Volatility (per minute): {volatility:.8f}")
+    print(f"Total trade size: {total_size:.2f}")
 ```
 
 ## API Reference
 
 ### SlidingWindow
 
-A time-based sliding window that automatically manages data expiration.
+A time-based sliding window that can store any type of Python object and automatically manages data expiration.
+
+The `SlidingWindow` uses a `deque` (double-ended queue) for efficient storage. Data is automatically pruned based on timestamps to maintain the window duration.
 
 ```python
 from statbot_common import SlidingWindow
@@ -63,117 +72,137 @@ window = SlidingWindow(window_duration_ms=30000)  # 30 second window
 
 - **`add(timestamp, data)`**: Add a data point to the window
   - `timestamp`: Unix timestamp (auto-detects s/ms/μs/ns based on magnitude)
-  - `data`: Any data to store (price, trade info, etc.)
+  - `data`: Any data object to store (e.g., a `dataclass` or custom object).
 
 - **`get_window_data()`**: Get all current data in the window
-  - Returns: `List[Tuple[int, Any]]` - list of (timestamp_ms, data) tuples
-  - Automatically removes expired entries
+  - Returns: `List[Tuple[int, Any]]` - list of (timestamp_ms, data) tuples.
+  - Automatically removes expired entries before returning.
 
 - **`get_latest()`**: Get the most recently added data point
-  - Returns: The data portion of the latest entry, or `None` if empty
+  - Returns: The data portion of the latest entry, or `None` if empty.
 
-- **`__len__()`**: Get the number of items currently in the window
+- **`__len__()`**: Get the number of items currently in the window.
 
-#### Timestamp Formats
+### Data Protocols
 
-The `SlidingWindow` automatically detects and normalizes timestamp formats:
+To enable flexible and type-safe calculations, `statbot_common` uses `Protocol` to define data requirements. Your data objects should conform to these protocols to work with the computation functions.
 
-| Format | Example | Digits | Converted To |
-|--------|---------|--------|--------------|
-| Seconds | `1678886400` | ≤10 | `1678886400000` ms |
-| Milliseconds | `1678886400000` | 11-13 | `1678886400000` ms |
-| Microseconds | `1678886400000000` | 14-16 | `1678886400000` ms |
-| Nanoseconds | `1678886400000000000` | 17-19 | `1678886400000` ms |
+- **`HasPrice`**: Requires the object to have a `price: float` attribute.
+- **`HasSize`**: Requires the object to have a `size: float` attribute.
 
-### compute_volatility
+You can use a `dataclass` or any custom class that meets these requirements:
 
-Calculate volatility from time-series data with uneven intervals.
+```python
+from dataclasses import dataclass
+
+@dataclass
+class MyTrade:
+    price: float  # Conforms to HasPrice
+    size: float   # Conforms to HasSize
+    exchange: str # Extra data is fine
+```
+
+### Computation Functions
+
+#### `compute_volatility`
+
+Calculates volatility from a list of time-series data points.
 
 ```python
 from statbot_common import compute_volatility
-import math
 
-# Prepare data: list of (timestamp, log_price) tuples
-data = [
-    (1678886400000, math.log(100.0)),
-    (1678886410000, math.log(100.5)),
-    (1678886420000, math.log(99.8)),
-]
-
-volatility = compute_volatility(data)
+# Data must contain objects conforming to HasPrice
+volatility = compute_volatility(trade_window.get_window_data())
 print(f"Volatility per minute: {volatility:.8f}")
 ```
 
-#### Parameters
+- **Module**: `statbot_common.volatility`
+- **Parameters**: `List[Tuple[int, HasPrice]]`
+  - A list of (timestamp, data) tuples, where `data` has a `.price` attribute.
+- **Returns**: `float` (volatility per minute) or `None`.
 
-- **`data_points`**: `List[Tuple[int, float]]`
-  - List of (timestamp, value) tuples
-  - Timestamp: Unix timestamp (any resolution - auto-normalized)
-  - Value: Typically `math.log(price)` for price volatility
+#### `compute_total_size`
 
-#### Returns
+Calculates the sum of the `size` attribute from a list of data points.
 
-- `float`: Volatility per minute
-- `None`: If insufficient data (< 2 points) or calculation error
+```python
+from statbot_common import compute_total_size
 
-#### Data Requirements
+# Data must contain objects conforming to HasSize
+total_size = compute_total_size(trade_window.get_window_data())
+print(f"Total size: {total_size:.2f}")
+```
 
-For price volatility calculation:
-1. **Convert prices to log returns**: Use `math.log(price)` as the value
-2. **Minimum 2 data points**: Need at least 2 points for calculation
-3. **Chronological order**: Data is automatically sorted by timestamp
+- **Module**: `statbot_common.size`
+- **Parameters**: `List[Tuple[int, HasSize]]`
+  - A list of (timestamp, data) tuples, where `data` has a `.size` attribute.
+- **Returns**: `float` (total size).
 
 ## Usage Examples
 
-### Market Data Analysis
+### Market Data Analysis with Rich Objects
 
 ```python
-from statbot_common import SlidingWindow, compute_volatility
-import math
+from statbot_common import SlidingWindow, compute_volatility, compute_total_size
+from dataclasses import dataclass
+
+@dataclass
+class Trade:
+    price: float
+    size: float
 
 # Track 15 minutes of trade data
 trade_window = SlidingWindow(window_duration_ms=15 * 60 * 1000)
 
-def on_trade_received(trade):
+def on_trade_received(trade_event):
     """Called when a new trade arrives"""
-    price = float(trade['price'])
-    timestamp = int(trade['timestamp'])  # Can be any resolution
-    
-    # Store the log price for volatility calculation
-    trade_window.add(timestamp, math.log(price))
+    trade = Trade(
+        price=float(trade_event['price']),
+        size=float(trade_event['size'])
+    )
+    timestamp = int(trade_event['timestamp'])
+    trade_window.add(timestamp, trade)
 
-def calculate_current_volatility():
-    """Calculate volatility from recent trades"""
+def get_current_metrics():
+    """Calculate all metrics from recent trades"""
     recent_trades = trade_window.get_window_data()
     
     if len(recent_trades) < 2:
-        return None
+        return None, None
         
-    # Data is already in (timestamp, log_price) format
     volatility = compute_volatility(recent_trades)
-    return volatility
+    total_size = compute_total_size(recent_trades)
+    return volatility, total_size
 
 # Example usage
 trades = [
-    {'timestamp': 1678886400000, 'price': '100.50'},
-    {'timestamp': 1678886410000, 'price': '100.75'},
-    {'timestamp': 1678886420000, 'price': '100.25'},
+    {'timestamp': 1678886400000, 'price': '100.50', 'size': '1.0'},
+    {'timestamp': 1678886410000, 'price': '100.75', 'size': '0.5'},
+    {'timestamp': 1678886420000, 'price': '100.25', 'size': '2.0'},
 ]
 
 for trade in trades:
     on_trade_received(trade)
 
-vol = calculate_current_volatility()
-if vol:
+vol, size = get_current_metrics()
+if vol is not None:
     print(f"Current 15-min volatility: {vol:.6f} per minute")
+    print(f"Total size in window: {size:.2f}")
 ```
 
 ### Multiple Time Windows
 
-```python
-from statbot_common import SlidingWindow
+You can still use multiple time windows, now with richer data objects.
 
-# Track multiple timeframes simultaneously
+```python
+from statbot_common import SlidingWindow, compute_volatility
+from dataclasses import dataclass
+
+@dataclass
+class DataPoint:
+    price: float
+
+# Track multiple timeframes
 windows = {
     '1m': SlidingWindow(1 * 60 * 1000),
     '5m': SlidingWindow(5 * 60 * 1000),
@@ -181,9 +210,9 @@ windows = {
 }
 
 def add_price_data(timestamp, price):
-    log_price = math.log(price)
+    data = DataPoint(price=price)
     for window in windows.values():
-        window.add(timestamp, log_price)
+        window.add(timestamp, data)
 
 def get_multi_timeframe_volatility():
     results = {}
@@ -196,12 +225,13 @@ def get_multi_timeframe_volatility():
 
 # Example
 add_price_data(1678886400000, 100.0)
-add_price_data(1678886460000, 100.5)  # 1 minute later
-add_price_data(1678886520000, 99.8)   # 2 minutes later
+add_price_data(1678886460000, 100.5)
+add_price_data(1678886520000, 99.8)
 
 volatilities = get_multi_timeframe_volatility()
 for timeframe, vol in volatilities.items():
-    print(f"{timeframe} volatility: {vol:.6f}")
+    if vol is not None:
+        print(f"{timeframe} volatility: {vol:.6f}")
 ```
 
 ## Testing
@@ -213,10 +243,10 @@ pytest
 ```
 
 All tests verify:
-- Correct volatility calculations with known datasets
-- Sliding window data management and expiration
-- Timestamp normalization across different resolutions
-- Edge cases and error handling
+- Correct metric calculations (e.g., `volatility`, `size`).
+- `SlidingWindow` data management and expiration with rich objects.
+- Timestamp normalization across different resolutions.
+- Graceful handling of objects that do not conform to protocols.
 
 ## License
 
