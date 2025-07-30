@@ -103,4 +103,117 @@ def test_get_latest():
     assert window.get_latest() == data_b
     # Add an item that prunes the first one
     window.add(12000, data_c)
-    assert window.get_latest() == data_c 
+    assert window.get_latest() == data_c
+
+def test_purge_method():
+    """Test the purge() method for explicit time-based cleanup."""
+    window = SlidingWindow(10000)  # 10 second window
+    
+    # Add test data (timestamps in ms)
+    window.add(1678886401000, DataPoint(value="a"))  # t=1000
+    window.add(1678886405000, DataPoint(value="b"))  # t=5000
+    window.add(1678886410000, DataPoint(value="c"))  # t=10000
+    
+    # All items should be present initially
+    assert len(window) == 3
+    
+    # Purge with window end at t=12000
+    # Cutoff time = 12000 - 10000 = 2000
+    # So only "a" (at t=1000) should be removed
+    window.purge(1678886412000)
+    
+    data = window.get_window_data()
+    assert len(data) == 2
+    assert data[0][1].value == "b"
+    assert data[1][1].value == "c"
+    
+    # Purge with window end at t=20000
+    # Cutoff time = 20000 - 10000 = 10000
+    # So "b" (at t=5000) should be removed, only "c" (at t=10000) remains
+    window.purge(1678886420000)
+    
+    data = window.get_window_data()
+    assert len(data) == 1
+    assert data[0][1].value == "c"
+
+def test_purge_timestamp_normalization():
+    """Test that purge() correctly normalizes different timestamp formats."""
+    window = SlidingWindow(10000)  # 10 second window
+    
+    # Add data with millisecond timestamps
+    window.add(1678886400000, DataPoint(value="a"))  # t=0
+    window.add(1678886405000, DataPoint(value="b"))  # t=5000
+    window.add(1678886410000, DataPoint(value="c"))  # t=10000
+    
+    # Purge using a timestamp in seconds (should be normalized to ms)
+    # 1678886412 seconds = 1678886412000 ms
+    # Cutoff = 1678886412000 - 10000 = 1678886402000
+    # So "a" should be removed
+    window.purge(1678886412)  # timestamp in seconds
+    
+    data = window.get_window_data()
+    assert len(data) == 2
+    assert data[0][1].value == "b"
+    assert data[1][1].value == "c"
+
+def test_purge_empty_window():
+    """Test purge() behavior on an empty window."""
+    window = SlidingWindow(10000)
+    
+    # Should not raise an error
+    window.purge(1678886400000)
+    assert len(window) == 0
+    assert window.get_window_data() == []
+
+def test_purge_no_items_to_remove():
+    """Test purge() when no items need to be removed.""" 
+    window = SlidingWindow(10000)
+    
+    # Add recent data
+    window.add(1678886410000, DataPoint(value="a"))
+    window.add(1678886415000, DataPoint(value="b"))
+    
+    # Purge with a window end that keeps all data
+    # Cutoff = 1678886420000 - 10000 = 1678886410000
+    # Both items should remain (timestamps >= cutoff)
+    window.purge(1678886420000)
+    
+    data = window.get_window_data()
+    assert len(data) == 2
+    assert data[0][1].value == "a"
+    assert data[1][1].value == "b"
+
+def test_purge_deterministic_behavior():
+    """Test that purge() provides deterministic behavior compared to implicit cleanup."""
+    window1 = SlidingWindow(10000)
+    window2 = SlidingWindow(10000)
+    
+    # Add same data to both windows
+    test_data = [
+        (1678886400000, DataPoint(value="a")),
+        (1678886405000, DataPoint(value="b")),
+        (1678886410000, DataPoint(value="c")),
+        (1678886415000, DataPoint(value="d"))
+    ]
+    
+    for ts, data in test_data:
+        window1.add(ts, data)
+        window2.add(ts, data)
+    
+    # Window1: use implicit cleanup by adding new data
+    window1.add(1678886422000, DataPoint(value="e"))
+    
+    # Window2: use explicit purge at the same timestamp
+    window2.purge(1678886422000)
+    
+    # Both should have the same result
+    data1 = window1.get_window_data()
+    data2 = window2.get_window_data()
+    
+    # Remove the "e" item from window1 for comparison
+    data1_without_e = [item for item in data1 if item[1].value != "e"]
+    
+    assert len(data1_without_e) == len(data2)
+    for i in range(len(data2)):
+        assert data1_without_e[i][0] == data2[i][0]  # Same timestamps
+        assert data1_without_e[i][1].value == data2[i][1].value  # Same values 

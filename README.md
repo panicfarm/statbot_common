@@ -101,6 +101,11 @@ window = SlidingWindow(window_duration_ms=30000)  # 30 second window
 
 - **`__len__()`**: Get the number of items currently in the window.
 
+- **`purge(window_end_timestamp_ms)`**: Explicitly remove data points older than the specified window end time
+  - `window_end_timestamp_ms`: Unix timestamp marking the absolute end of the desired window (auto-detects s/ms/μs/ns)
+  - Removes all data points whose timestamps are older than `(window_end_timestamp_ms - window_duration_ms)`
+  - Provides precise control over window boundaries for time-sensitive applications
+
 ### Data Protocols
 
 To enable flexible and type-safe calculations, `statbot_common` uses `Protocol` to define data requirements. Your data objects should conform to these protocols to work with the computation functions.
@@ -206,6 +211,47 @@ vol, size = get_current_metrics()
 if vol is not None:
     print(f"Current 15-min volatility: {vol:.6f} per minute")
     print(f"Total size in window: {size:.2f}")
+```
+
+### Explicit Window Management with `purge()`
+
+For applications requiring precise time alignment, use the `purge()` method to explicitly control window boundaries:
+
+```python
+from statbot_common import SlidingWindow
+from dataclasses import dataclass
+
+@dataclass
+class MarketData:
+    price: float
+    size: float
+
+# Create a 60-second sliding window
+window = SlidingWindow(window_duration_ms=60000)
+
+def process_message_batch(messages):
+    """Process a batch of market data messages with precise time alignment"""
+    for message in messages:
+        # Add the data point
+        data = MarketData(price=message['price'], size=message['size'])
+        window.add(message['timestamp'], data)
+        
+        # Explicitly purge data older than current message time
+        # This ensures window is always aligned to current message processing time
+        window.purge(message['timestamp'])
+        
+        # Now any metrics calculated are precisely time-aligned
+        current_data = window.get_window_data()
+        print(f"Data points in {len(current_data)} precisely aligned to message at {message['timestamp']}")
+
+# Example: Market data replay with precise timing
+messages = [
+    {'timestamp': 1678886400000, 'price': 100.0, 'size': 1.0},
+    {'timestamp': 1678886430000, 'price': 100.5, 'size': 1.5},  # 30s later
+    {'timestamp': 1678886480000, 'price': 101.0, 'size': 2.0},  # 50s later
+]
+
+process_message_batch(messages)
 ```
 
 ### Multiple Time Windows

@@ -75,4 +75,19 @@ class SlidingWindow:
         """Returns the most recently added data point, or None if empty."""
         if not self._data:
             return None
-        return self._data[-1][1] 
+        return self._data[-1][1]
+
+    def purge(self, window_end_timestamp_ms: int):
+        """
+        Explicitly removes data points that are older than the specified window end time.
+        
+        This method provides precise control over window boundaries by removing all data points
+        whose timestamps are older than (window_end_timestamp_ms - window_duration_ms).
+        
+        Args:
+            window_end_timestamp_ms: The absolute end timestamp of the desired window in milliseconds.
+                                   Data points older than (window_end_timestamp_ms - window_duration_ms) 
+                                   will be removed.
+        """
+        end_timestamp_ms = normalize_timestamp_to_ms(window_end_timestamp_ms)
+        self._cleanup(end_timestamp_ms) 
