@@ -213,9 +213,9 @@ if vol is not None:
     print(f"Total size in window: {size:.2f}")
 ```
 
-### Explicit Window Management with `purge()`
+### Explicit Window Management with `purge(window_end_timestamp_ms: int))`
 
-For applications requiring precise time alignment, use the `purge()` method to explicitly control window boundaries:
+For applications requiring precise time alignment, use the `purge(window_end_timestamp_ms: int))` method to explicitly control window boundaries:
 
 ```python
 from statbot_common import SlidingWindow
