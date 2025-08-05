@@ -22,8 +22,7 @@ def compute_vmf(
         data_points: A list of tuples, where each tuple contains a
                      Unix timestamp (s, ms, us, or ns) and a Trade object
                      with 'timestamp' and 'quantity' attributes.
-        smoothing_period_trades: Number of trades (N) for smoothing velocity
-                                and normalization window. Defaults to 20.
+        smoothing_period_trades: Number of trades (N) for smoothing velocity. Defaults to 20.
     
     Returns:
         The normalized VMF value, or None if computation is not possible.
@@ -97,9 +96,9 @@ def compute_vmf(
         logging.debug(f"VMF calc: Not enough VMF_raw values ({len(vmf_raw_values)} < {smoothing_period_trades}).")
         return None
     
-    # Step 4: Calculate normalized VMF using the last N VMF_raw values
-    # Take the most recent N VMF_raw values for normalization
-    normalization_window = vmf_raw_values[-smoothing_period_trades:]
+    # Step 4: Calculate normalized VMF using all VMF_raw values (two-timescale approach)
+    # Use the entire set of smoothed values for normalization to capture long-term context
+    normalization_window = vmf_raw_values
     
     # Calculate mean and standard deviation
     mean_vmf_raw = sum(normalization_window) / len(normalization_window)

@@ -224,6 +224,52 @@ class TestVMF(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIsInstance(result, float)
     
+    def test_two_timescale_normalization(self):
+        """
+        Non-trivial two-timescale test where T_w > N.
+
+        We provide 8 trades (timestamps 0-7 s) with quantities increasing by 100.
+        With N = 3 we get 7 instantaneous velocities and 5 VMF_raw values – longer
+        than the smoothing window, so the mean/std **must** be computed over all
+        5 values.
+
+        Manual calculation (units: seconds & quantity units):
+
+        Instantaneous velocities (v_k):
+            v1 = 200 / 1 = 200
+            v2 = 300 / 1 = 300
+            v3 = 400 / 1 = 400
+            v4 = 500 / 1 = 500
+            v5 = 600 / 1 = 600
+            v6 = 700 / 1 = 700
+            v7 = 800 / 1 = 800
+
+        Smoothed velocities (VMF_raw,k) with N = 3:
+            VMF_raw,2 = mean(200, 300, 400) = 300
+            VMF_raw,3 = mean(300, 400, 500) = 400
+            VMF_raw,4 = mean(400, 500, 600) = 500
+            VMF_raw,5 = mean(500, 600, 700) = 600
+            VMF_raw,6 = mean(600, 700, 800) = 700
+            (=> vmf_raw_values = [300, 400, 500, 600, 700])
+
+        Long-term normalization (over all 5 values):
+            μ = mean(vmf_raw_values) = 500
+            σ = sqrt( mean((x−500)^2) )
+              = sqrt((200^2 + 100^2 + 0^2 + 100^2 + 200^2) / 5)
+              = sqrt(20 000) ≈ 141.421356
+
+        Latest VMF_raw = 700
+        Expected VMF_normalized = (700 − 500) / 141.421356 ≈ 1.41421356
+        """
+        trades = []
+        for i, qty in enumerate(range(100, 900, 100)):
+            ts = 1000 + i * 1000  # 0-7 seconds in ms
+            trades.append((ts, MockTrade(timestamp=ts, quantity=qty)))
+
+        result = compute_vmf(trades, smoothing_period_trades=3)
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result, 1.41421356, places=4)
+
     def test_sliding_window_integration(self):
         """Test that compute_vmf works with SlidingWindow output format."""
         # Create data in the format that SlidingWindow.get_window_data() returns
