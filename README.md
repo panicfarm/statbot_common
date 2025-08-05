@@ -13,7 +13,7 @@ This package provides common, reusable utilities for statistical analysis of mar
 
 You can install this package directly from GitHub.
 
-### Latest Version (v0.4.1)
+### Latest Version (v0.4.2)
 
 For new projects, install the latest version to get all features and the most flexible architecture:
 ```bash
@@ -21,7 +21,7 @@ pip install git+https://github.com/panicfarm/statbot_common.git
 ```
 Or to install a specific version:
 ```bash
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.4.1
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.4.2
 ```
 
 ### Legacy Version (v2.0.0)

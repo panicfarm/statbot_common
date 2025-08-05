@@ -71,14 +71,15 @@ def compute_vmf(
         ts_curr, quantity_curr = sorted_trades[i]
         
         time_diff_ms = ts_curr - ts_prev
-        if time_diff_ms <= 0:
-            logging.warning(f"VMF calc: Non-positive time delta ({time_diff_ms} ms). Skipping.")
-            continue
-            
-        # Convert to seconds for velocity calculation
-        time_diff_s = time_diff_ms / 1000.0
-        velocity = quantity_curr / time_diff_s
-        velocities.append(velocity)
+        if time_diff_ms == 0:
+            logging.debug(f"VMF calc: Zero time delta ({time_diff_ms} ms). Skipping.")
+        elif time_diff_ms < 0:
+            logging.warning(f"VMF calc: Negative time delta ({time_diff_ms} ms). Skipping.")
+        else:
+            # Convert to seconds for velocity calculation
+            time_diff_s = time_diff_ms / 1000.0
+            velocity = quantity_curr / time_diff_s
+            velocities.append(velocity)
     
     if len(velocities) < smoothing_period_trades:
         logging.debug(f"VMF calc: Not enough velocities ({len(velocities)} < {smoothing_period_trades}).")

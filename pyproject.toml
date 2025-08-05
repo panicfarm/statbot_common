@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "statbot-common"
-version = "0.4.1"
+version = "0.4.2"
 description = "Common utilities for statistical analysis of market data, including volatility and data windowing."
 readme = "README.md"
 requires-python = ">=3.8"
