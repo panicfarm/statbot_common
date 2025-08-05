@@ -6,6 +6,9 @@ from .timestamp import normalize_timestamp_to_ms
 from .protocols import HasPrice, HasSize, Trade
 from .size import compute_total_size
 from .vmf import compute_vmf
+from importlib.metadata import version
+
+__version__ = version("statbot-common")
 
 # This defines the public API for the package.
 # When a user does `from statbot_common import *`, only these names will be imported.

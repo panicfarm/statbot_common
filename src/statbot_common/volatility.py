@@ -61,14 +61,19 @@ def compute_volatility(
         # Convert time delta from milliseconds to minutes
         delta_time_min = delta_time_ms / 60000.0
 
-        if delta_time_min > 0:
-            delta_values.append(delta_value)
-            delta_times_minutes.append(delta_time_min)
-        else:
-            logging.warning(
-                f"Volatility calc: Non-positive time delta ({delta_time_min} min) "
+        if delta_time_min == 0:
+            logging.debug(
+                f"Volatility calc: Zero time delta ({delta_time_min} min) "
                 f"between point {i} ({ts_curr}) and {i + 1} ({ts_next}). Skipping."
             )
+        elif delta_time_min < 0:
+            logging.warning(
+                f"Volatility calc: Negative time delta ({delta_time_min} min) "
+                f"between point {i} ({ts_curr}) and {i + 1} ({ts_next}). Skipping."
+            )
+        else:
+            delta_values.append(delta_value)
+            delta_times_minutes.append(delta_time_min)
 
     if not delta_values or not delta_times_minutes:
         logging.debug("Volatility calc: No valid time intervals found.")
