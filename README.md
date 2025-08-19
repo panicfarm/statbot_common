@@ -6,6 +6,7 @@ This package provides common, reusable utilities for statistical analysis of mar
 - **`compute_volatility`**: Calculates volatility from time-series data. Found in `volatility.py`.
 - **`compute_total_size`**: Calculates the total size from time-series data. Found in `size.py`.
 - **`VMF`**: Calculates the Volume-weighted Market Flow (VMF) indicator, providing normalized insights into trade velocity. Found in `vmf.py`.
+- **Markout Skew**: Computes side-conditional markouts and skew using completion-time sliding windows; supports clock-time and event-time horizons. Found in `markout_skew.py`.
 - **Protocols (`HasPrice`, `HasSize`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
 
 
@@ -165,6 +166,71 @@ if vmf is not None:
   - A list of (timestamp, data) tuples, where `data` has `timestamp` and `quantity` attributes.
   - `smoothing_period_trades`: Number of trades for smoothing and normalization window.
 - **Returns**: `float` (normalized VMF value) or `None`. Requires at least `2 * smoothing_period_trades` data points.
+
+### Markout Skew
+
+Calculates side-conditional markouts and skew using completion-time sliding windows with either clock-time or event-time horizons.
+
+```python
+from dataclasses import dataclass
+from typing import List
+
+from statbot_common import (
+    MarkoutSkewCalculator,
+    MarkoutConfig,
+    coalesce_l3_trades_by_timestamp,
+    compute_mid_price,
+)
+
+@dataclass
+class L3Print:
+    timestamp: int
+    price: float
+    quantity: float
+    aggressor_sign: int  # +1 = buy, -1 = sell
+
+# Configure a 1s clock-time horizon and a 5-minute completion-time window
+cfg = MarkoutConfig(horizon_type="clock", tau_ms=1000, window_ms=5 * 60 * 1000)
+calc = MarkoutSkewCalculator(cfg)
+
+# Example inputs for a single timestamp
+ts_ms = 1710000000000
+bid, ask = 100.00, 100.20
+pre_mid = compute_mid_price(bid, ask)
+prints: List[L3Print] = [
+    L3Print(timestamp=ts_ms, price=100.10, quantity=5.0, aggressor_sign=1),
+    L3Print(timestamp=ts_ms, price=100.18, quantity=3.0, aggressor_sign=-1),
+]
+
+# Add coalesced prints (aggregated by timestamp and side)
+by_ts = coalesce_l3_trades_by_timestamp(prints)
+for t_ms, l3s in by_ts.items():
+    calc.add_coalesced_l3_trades(t_ms, l3s, pre_mid)
+
+# Later (>= tau_ms), complete horizons with the current mid and time
+current_time_ms = ts_ms + 1200
+current_mid = 100.15
+calc.complete_horizons_clock_time(current_time_ms, current_mid)
+
+# Compute current skew for the completion-time window
+skew_stats = calc.get_markout_skew(current_time_ms)
+print(skew_stats)  # {'mplus': ..., 'mminus': ..., 'skew': ..., 'n_buys': ..., 'n_sells': ...}
+
+# Event-time variant: use k_trades instead of tau_ms and call complete_horizons_event_time
+# cfg = MarkoutConfig(horizon_type="event", k_trades=50, window_ms=5 * 60 * 1000)
+# calc.complete_horizons_event_time(current_time_ms, current_mid)
+```
+
+- **Module**: `statbot_common.markout_skew`
+- **Core types**: `MarkoutSkewCalculator`, `MarkoutConfig`, `MarkoutObservation`
+- **Utilities**: `coalesce_l3_trades_by_timestamp`, `compute_mid_price`, `validate_l2_consistency`
+- **Configuration**:
+  - `horizon_type`: `"clock"` or `"event"`
+  - `tau_ms`: Clock-time horizon in milliseconds (required when `horizon_type == "clock"`)
+  - `k_trades`: Event-time horizon in number of trades (required when `horizon_type == "event"`)
+  - `window_ms`: Completion-time sliding window size (default 300000 ms)
+- **Returns**: `get_markout_skew(T)` → `Dict[str, Optional[float]]` with keys `mplus`, `mminus`, `skew`, `n_buys`, `n_sells`.
+- **Notes**: Timestamps auto-normalize to milliseconds; missing side counts yield `None` for the corresponding means and `skew`.
 
 ### Data Protocols
 
