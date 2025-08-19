@@ -1,0 +1,63 @@
+# Cursor IDE Rules for statbot_common
+
+## LaTeX/Math Formatting Rules
+
+### GitHub Markdown Math Rendering
+When writing mathematical expressions in Markdown files (*.md), always use GitHub's supported math syntax:
+
+#### Inline Math
+- Use `$...$` for inline mathematical expressions
+- Example: `$E = mc^2$`
+- Example: `$m(t^-)$`
+
+#### Block/Display Math
+- Use ```math code blocks for display equations
+- Never use `$$...$$` or `\[...\]` or `\(...\)`
+- Always put math blocks on separate lines with blank lines before and after
+
+Example:
+```
+Some text before the equation.
+
+```math
+\widehat{M}^{+}_{\tau}(T) = \frac{1}{N_T^{+}}\sum_{j\in B_T}\Delta m_j
+```
+
+More text after the equation.
+```
+
+#### Complex LaTeX Environments
+- Use full LaTeX notation in ```math blocks including:
+  - `\widehat{}` for wide hats (not simplified `\hat{}`)
+  - `\begin{cases}...\end{cases}` for piecewise functions
+  - `\dfrac{}{}` for display fractions
+  - `\sum_{subscript}` for summations
+  - All complex subscripts and superscripts
+
+#### Example of Correct Piecewise Function:
+```
+```math
+\widehat{M}^{+}_{\tau}(T) = 
+\begin{cases}
+\dfrac{1}{N_T^{+}}\sum_{j\in B_T}\Delta m_j,& N_T^{+}>0\\
+\text{NaN (or carry last)},& N_T^{+}=0
+\end{cases}
+```
+```
+
+### What NOT to do:
+- ❌ Never use `$$...$$` blocks
+- ❌ Never use `\[...\]` or `\(...\)` 
+- ❌ Never simplify LaTeX notation unnecessarily
+- ❌ Never put math blocks inside lists or tables without proper spacing
+
+### Why These Rules:
+- GitHub's Markdown renderer supports ```math code blocks reliably
+- `$$` blocks have context-sensitive parsing issues
+- ```math blocks support complex LaTeX environments that `$$` blocks don't
+- This ensures consistent rendering across GitHub, VS Code, and other platforms
+
+## General Documentation Rules
+- Always use proper mathematical notation in documentation
+- Preserve mathematical rigor and standard notation conventions
+- Test markdown rendering on GitHub before finalizing
