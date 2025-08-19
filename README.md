@@ -13,7 +13,7 @@ This package provides common, reusable utilities for statistical analysis of mar
 
 You can install this package directly from GitHub.
 
-### Latest Version (v0.4.2)
+### Latest Version (v0.5.0)
 
 For new projects, install the latest version to get all features and the most flexible architecture:
 ```bash
@@ -21,7 +21,7 @@ pip install git+https://github.com/panicfarm/statbot_common.git
 ```
 Or to install a specific version:
 ```bash
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.4.2
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.5.0
 ```
 
 ### Legacy Version (v2.0.0)
@@ -37,8 +37,20 @@ For development (includes pytest):
 pip install git+https://github.com/panicfarm/statbot_common.git[dev]
 
 # For a specific version
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.4.1#egg=statbot_common[dev]
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.5.0#egg=statbot_common[dev]
 ```
+
+## What's New in v0.5.0
+
+- Added markout skew utilities and protocols for L3/L2 analysis:
+  - New protocols: `L3Trade` (with `aggressor_sign`) and `MidPrice`.
+  - New module `markout_skew.py` exporting:
+    - `MarkoutSkewCalculator`, `MarkoutObservation`, `MarkoutConfig`
+    - Utilities: `coalesce_l3_trades_by_timestamp`, `compute_mid_price`, `validate_l2_consistency`
+  - Re-exported in package `__init__` for direct import from `statbot_common`.
+- Updated `protocols.py` to include `L3Trade` and `MidPrice` definitions.
+
+These additions implement completion-time sliding windows, clock/event horizon support, and coalesced L3 processing to compute side-conditional markout means and skew.
 
 ## Quick Start
 
