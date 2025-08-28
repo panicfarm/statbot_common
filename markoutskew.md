@@ -134,6 +134,9 @@ When current clock reaches $u$:
 - Read $m(u)$, compute $\Delta m = m(u)-m(t^-)$.
 - Insert $(u, \Delta m)$ into the buy deque if $s=+1$, else the sell deque.
 
+**CRITICAL IMPLEMENTATION CONSTRAINT (Clock-time horizons):**
+The caller MUST invoke `complete_horizons_clock_time(u, m(u))` separately for each distinct horizon time $u$, passing the mid-price evaluated at that specific time $u$. Never batch multiple distinct horizon times into a single call, as this would cause all observations to use the same mid-price regardless of their actual horizon time, violating the spec requirement that $\Delta m = m(u) - m(t^-)$ where $m(u)$ is the mid-price at the specific horizon time $u$ for each observation.
+
 Eviction (completion-time window):
 - At each update time $T$, evict from the front of each deque all entries with $u < T-W$.
 - Maintain running sums and counts for O(1) updates:
@@ -165,7 +168,7 @@ Compute:
 - `MarkoutConfig(horizon_type: Literal["clock","event"], tau_ms: Optional[int], k_trades: Optional[int], window_ms: int)`
 - `MarkoutSkewCalculator(config)`
   - `add_coalesced_l3_trades(timestamp_ms, trades, pre_trade_mid)` → create up to two observations (buy/sell)
-  - `complete_horizons_clock_time(current_time_ms, current_mid)` → complete and insert into windows
+  - `complete_horizons_clock_time(current_time_ms, current_mid)` → complete and insert into windows ⚠️ **See constraint below**
   - `complete_horizons_event_time(current_time_ms, current_mid)` → complete and insert into windows
   - `get_markout_skew(current_time_ms)` → `{mplus, mminus, skew, n_buys, n_sells}`
   - `get_state()` / `restore_from_state(state)`
@@ -174,7 +177,10 @@ Compute:
   - `compute_mid_price(bid, ask)`
   - `validate_l2_consistency(timestamp_ms, l3_trades_count, l2_updates_count)`
 
-Notes:
+**USAGE CONSTRAINTS:**
 - The caller is responsible for producing the true pre-trade mid $m(t^-)$ at each L3 timestamp (per the cross-stream tie-break in the spec). The library then handles aggregation, scheduling, completion-time windowing, and indicator computation.
+- **For clock-time horizons**: The caller MUST call `complete_horizons_clock_time(u, m(u))` separately for each distinct horizon time $u$, providing the mid-price evaluated at that specific time. Batching multiple horizon times in a single call will produce incorrect markouts.
+- **For event-time horizons**: The caller may batch multiple completions in a single call to `complete_horizons_event_time(current_time, current_mid)` since all completed observations use the current time as their horizon completion time.
+
 
 
