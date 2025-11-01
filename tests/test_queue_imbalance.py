@@ -1,0 +1,121 @@
+import pytest
+from decimal import Decimal
+
+
+# Skip all tests in this module until the implementation exists
+qi = pytest.importorskip("statbot_common.queue_imbalance")
+
+
+def test_exponential_weights_half_life_default():
+    # HL = 0.5 ticks, K = 4
+    hl = Decimal("0.5")
+    weights = qi.compute_exponential_weights(4, hl)
+    # Expected: [1.0, 0.25, 0.0625, 0.015625]
+    expected = [1.0, 0.25, 0.0625, 0.015625]
+    assert len(weights) == 4
+    for w, e in zip(weights, expected):
+        assert pytest.approx(float(w), rel=1e-12, abs=1e-12) == e
+
+
+def test_tick_grid_zero_padding():
+    # Best bid/ask and tick size
+    best_bid = Decimal("100.00")
+    best_ask = Decimal("100.01")
+    tick = Decimal("0.01")
+    k = 3
+    # Raw books with gaps
+    bids = {
+        Decimal("100.00"): Decimal("5"),
+        # 99.99 missing -> zero pad
+        Decimal("99.98"): Decimal("7"),
+    }
+    asks = {
+        Decimal("100.01"): Decimal("4"),
+        # 100.02 missing -> zero pad
+        Decimal("100.03"): Decimal("6"),
+    }
+    b_sizes, a_sizes = qi.sizes_on_tick_grid(best_bid, best_ask, tick, k, bids, asks)
+    assert b_sizes == [Decimal("5"), Decimal("0"), Decimal("7")]
+    assert a_sizes == [Decimal("4"), Decimal("0"), Decimal("6")]
+
+
+def test_ib_symmetry_and_extremes():
+    hl = Decimal("1.0")
+    w = qi.compute_exponential_weights(3, hl)
+
+    # Symmetry: equal sizes => IB = 0
+    b = [Decimal("10"), Decimal("10"), Decimal("10")]
+    a = [Decimal("10"), Decimal("10"), Decimal("10")]
+    ib0 = qi.compute_ib(b, a, w)
+    assert ib0 is not None
+    assert abs(float(ib0)) <= 1e-12
+
+    # All ask zero => IB = +1
+    b = [Decimal("5"), Decimal("2"), Decimal("1")]
+    a = [Decimal("0"), Decimal("0"), Decimal("0")]
+    ib_pos = qi.compute_ib(b, a, w)
+    assert ib_pos is not None
+    assert pytest.approx(float(ib_pos), rel=1e-12, abs=1e-12) == 1.0
+
+    # All bid zero => IB = -1
+    b = [Decimal("0"), Decimal("0"), Decimal("0")]
+    a = [Decimal("3"), Decimal("2"), Decimal("1")]
+    ib_neg = qi.compute_ib(b, a, w)
+    assert ib_neg is not None
+    assert pytest.approx(float(ib_neg), rel=1e-12, abs=1e-12) == -1.0
+
+    # Zero denominator => None
+    b = [Decimal("0"), Decimal("0"), Decimal("0")]
+    a = [Decimal("0"), Decimal("0"), Decimal("0")]
+    ib_none = qi.compute_ib(b, a, w)
+    assert ib_none is None
+
+
+def test_ib_normal_value():
+    # A non-edge case: IB strictly between -1 and 1 and not 0
+    hl = Decimal("1.0")
+    w = qi.compute_exponential_weights(3, hl)
+
+    b = [Decimal("10"), Decimal("5"), Decimal("1")]  # bids
+    a = [Decimal("8"), Decimal("3"), Decimal("2")]   # asks
+
+    ib = qi.compute_ib(b, a, w)
+    assert ib is not None
+
+    # Expected value from weighted sums
+    d_bid = sum((w[i] * b[i] for i in range(3)), start=Decimal("0"))
+    d_ask = sum((w[i] * a[i] for i in range(3)), start=Decimal("0"))
+    expected = (d_bid - d_ask) / (d_bid + d_ask)
+
+    assert pytest.approx(float(ib), rel=1e-12, abs=1e-12) == float(expected)
+    assert -1.0 < float(ib) < 1.0
+    assert abs(float(ib)) > 1e-6
+
+def test_time_weighted_mean_segments():
+    # Configure calculator
+    config = qi.QueueImbalanceConfig(
+        k_levels=3,
+        tick_size=Decimal("0.01"),
+        half_life_ticks=Decimal("0.5"),
+        window_ms=10_000,
+    )
+    calc = qi.QueueImbalanceCalculator(config)
+
+    # Synthetic book snapshots at t=0ms and t=6000ms
+    # Segment1: IB = +1 from [0, 6000)
+    bids1 = {Decimal("100.00"): Decimal("10")}
+    asks1 = {Decimal("100.01"): Decimal("0")}
+    calc.update_from_book(0, Decimal("100.00"), Decimal("100.01"), bids1, asks1)
+
+    # Segment2: IB = -1 from [6000, 10000)
+    bids2 = {Decimal("100.00"): Decimal("0")}
+    asks2 = {Decimal("100.01"): Decimal("8")}
+    calc.update_from_book(6000, Decimal("100.00"), Decimal("100.01"), bids2, asks2)
+
+    # Evaluate TW mean at T=10000 over window [0, 10000]
+    tw = calc.get_time_weighted_mean(10_000)
+    # Half time at +1, half at -1 => mean 0
+    assert tw is not None
+    assert abs(float(tw)) <= 1e-12
+
+
