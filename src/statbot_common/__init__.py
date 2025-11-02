@@ -14,6 +14,13 @@ from .markout_skew import (
     compute_mid_price,
     validate_l2_consistency
 )
+from .queue_imbalance import (
+    compute_exponential_weights,
+    sizes_on_tick_grid,
+    compute_ib,
+    QueueImbalanceConfig,
+    QueueImbalanceCalculator,
+)
 from importlib.metadata import version
 
 __version__ = version("statbot-common")
@@ -37,4 +44,9 @@ __all__ = [
     "coalesce_l3_trades_by_timestamp",
     "compute_mid_price",
     "validate_l2_consistency",
+    "compute_exponential_weights",
+    "sizes_on_tick_grid",
+    "compute_ib",
+    "QueueImbalanceConfig",
+    "QueueImbalanceCalculator",
 ] 
