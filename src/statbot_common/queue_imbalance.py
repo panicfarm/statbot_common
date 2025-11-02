@@ -31,11 +31,12 @@ def compute_exponential_weights(k_levels: int, half_life_ticks: Decimal) -> List
             weights.append(Decimal(1) / (Decimal(2) ** exponent))
         return weights
 
-    # Fallback: fractional exponent via exp/ln
-    ln2 = Decimal(2).ln()
+    # Fallback: fractional exponent via exp/ln using decimal context for portability
+    from decimal import getcontext
+    ln2 = getcontext().ln(Decimal(2))
     for k in range(1, k_levels + 1):
         exponent = - (Decimal(k - 1) / half_life_ticks) * ln2
-        weights.append(exponent.exp())
+        weights.append(getcontext().exp(exponent))
     return weights
 
 

@@ -99,19 +99,20 @@ def test_time_weighted_mean_segments():
     )
     calc = qi.QueueImbalanceCalculator(config)
 
-    # Synthetic book snapshots at t=0ms and t=6000ms
-    # Segment1: IB = +1 from [0, 6000)
+    # Synthetic book snapshots at base epoch ms to avoid unit inference issues
+    base = 1_700_000_000_000  # ms
+    # Segment1: IB = +1 from [base, base+5000)
     bids1 = {Decimal("100.00"): Decimal("10")}
     asks1 = {Decimal("100.01"): Decimal("0")}
-    calc.update_from_book(0, Decimal("100.00"), Decimal("100.01"), bids1, asks1)
+    calc.update_from_book(base, Decimal("100.00"), Decimal("100.01"), bids1, asks1)
 
-    # Segment2: IB = -1 from [6000, 10000)
+    # Segment2: IB = -1 from [base+5000, base+10000)
     bids2 = {Decimal("100.00"): Decimal("0")}
     asks2 = {Decimal("100.01"): Decimal("8")}
-    calc.update_from_book(6000, Decimal("100.00"), Decimal("100.01"), bids2, asks2)
+    calc.update_from_book(base + 5000, Decimal("100.00"), Decimal("100.01"), bids2, asks2)
 
-    # Evaluate TW mean at T=10000 over window [0, 10000]
-    tw = calc.get_time_weighted_mean(10_000)
+    # Evaluate TW mean at T=base+10000 over window [base, base+10000]
+    tw = calc.get_time_weighted_mean(base + 10_000)
     # Half time at +1, half at -1 => mean 0
     assert tw is not None
     assert abs(float(tw)) <= 1e-12
