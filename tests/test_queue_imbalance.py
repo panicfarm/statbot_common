@@ -82,14 +82,12 @@ def test_ib_normal_value():
     ib = qi.compute_ib(b, a, w)
     assert ib is not None
 
-    # Expected value from weighted sums
-    d_bid = sum((w[i] * b[i] for i in range(3)), start=Decimal("0"))
-    d_ask = sum((w[i] * a[i] for i in range(3)), start=Decimal("0"))
-    expected = (d_bid - d_ask) / (d_bid + d_ask)
-
-    assert pytest.approx(float(ib), rel=1e-12, abs=1e-12) == float(expected)
-    assert -1.0 < float(ib) < 1.0
-    assert abs(float(ib)) > 1e-6
+    # Manual expected:
+    # D_bid = 10 + 0.5*5 + 0.25*1 = 12.75
+    # D_ask =  8 + 0.5*3 + 0.25*2 = 10.00
+    # IB = (12.75 - 10.00) / (12.75 + 10.00) = 2.75 / 22.75 = 11/91 ≈ 0.1208791208791209
+    expected = Decimal(11) / Decimal(91)
+    assert ib == expected
 
 def test_time_weighted_mean_segments():
     # Configure calculator
