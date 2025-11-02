@@ -89,6 +89,49 @@ def test_ib_normal_value():
     expected = Decimal(11) / Decimal(91)
     assert ib == expected
 
+    # Extended case: K=4 while the book has 7 levels per side
+    # Build a 7-level book around the touch
+    best_bid = Decimal("100.00")
+    best_ask = Decimal("100.01")
+    tick = Decimal("0.01")
+    k_levels = 4
+    hl4 = Decimal("1.0")
+    w4 = qi.compute_exponential_weights(k_levels, hl4)  # [1, 1/2, 1/4, 1/8]
+
+    bids_map = {
+        Decimal("100.00"): Decimal("10"),
+        Decimal("99.99"): Decimal("9"),
+        Decimal("99.98"): Decimal("8"),
+        Decimal("99.97"): Decimal("7"),
+        Decimal("99.96"): Decimal("6"),
+        Decimal("99.95"): Decimal("5"),
+        Decimal("99.94"): Decimal("4"),
+    }
+    asks_map = {
+        Decimal("100.01"): Decimal("8"),
+        Decimal("100.02"): Decimal("7"),
+        Decimal("100.03"): Decimal("6"),
+        Decimal("100.04"): Decimal("5"),
+        Decimal("100.05"): Decimal("4"),
+        Decimal("100.06"): Decimal("3"),
+        Decimal("100.07"): Decimal("2"),
+    }
+
+    b4, a4 = qi.sizes_on_tick_grid(best_bid, best_ask, tick, k_levels, bids_map, asks_map)
+    # Only the first 4 levels should be considered
+    assert b4 == [Decimal("10"), Decimal("9"), Decimal("8"), Decimal("7")]
+    assert a4 == [Decimal("8"), Decimal("7"), Decimal("6"), Decimal("5")]
+
+    ib4 = qi.compute_ib(b4, a4, w4)
+    assert ib4 is not None
+
+    # Manual expected using weights [1, 1/2, 1/4, 1/8]
+    # D_bid = 10 + 0.5*9 + 0.25*8 + 0.125*7 = 139/8 = 17.375
+    # D_ask =  8 + 0.5*7 + 0.25*6 + 0.125*5 = 109/8 = 13.625
+    # IB = (139/8 - 109/8) / (139/8 + 109/8) = (30/8) / (248/8) = 30/248 = 15/124
+    expected4 = Decimal(15) / Decimal(124)
+    assert ib4 == expected4
+
 def test_time_weighted_mean_segments():
     # Configure calculator
     config = qi.QueueImbalanceConfig(
