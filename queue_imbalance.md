@@ -95,7 +95,7 @@ All functions use `Decimal` for prices/sizes/weights; timestamps are normalized 
 ## 5) Edge handling
 
 - If either side of the book is missing best price, skip update and return `None`.
-- If `tick_size <= 0` or `half_life_ticks <= 0`, do not compute and log a warning.
+- If `tick_size <= 0` or `half_life_ticks <= 0`, raise `ValueError`.
 - If `D_bid + D_ask = 0`, `IB_t` is `None`.
 - Window with no covered time returns `None`.
 
