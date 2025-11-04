@@ -11,7 +11,8 @@ This document defines the Depth/Queue Imbalance indicator implemented in `statbo
   - Time-weighted sliding-window mean of IB_t over an adjustable window W
   - Timestamp normalization to milliseconds and state snapshot/restore
 - Expected from the caller (application layer):
-  - Provide best bid/ask, tick size, and full depth maps at each evaluation time
+  - Resolve tick size for the instrument (e.g., via exchange API)
+  - Provide best bid/ask, resolved tick size, and full depth maps at each evaluation time
   - Decide when to invoke updates (typically on L2 updates that change top-of-book/depth)
   - Configure K, half-life, and window length; handle persistence/plotting
 
@@ -119,6 +120,7 @@ All functions use `Decimal` for prices/sizes/weights; timestamps are normalized 
 
 ## 6) Usage constraints
 
+- Resolve tick size upfront (e.g., via exchange API) before creating the calculator.
 - Call `update_from_book` whenever L2 updates change depth (especially the touch). Pass the timestamp of that update in milliseconds.
 - The indicator is defined from L2 only (no L3 required).
 - The library treats the series as right-continuous per update times to compute the time-weighted mean.
