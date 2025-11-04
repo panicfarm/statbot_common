@@ -59,6 +59,22 @@ Given best bid `p^b`, best ask `p^a`, and `tick_size`:
 
 ---
 
+## 2.5) Automatic tick size inference (optional enhancement)
+
+While the library requires `tick_size` to be provided explicitly, applications can automatically infer it from the order book structure when not available from exchange metadata:
+
+- Observe the top two price levels on each side (bids: highest two; asks: lowest two)
+- Calculate positive price differences between adjacent levels
+- Choose the minimum observed difference as the inferred tick size
+- This approach provides a robust estimate for most liquid instruments with sufficient book depth
+
+Example implementation:
+- Bid side: `tick_size = min(bid[0] - bid[1], bid[1] - bid[2], ...)` (if available)
+- Ask side: `tick_size = min(ask[1] - ask[0], ask[2] - ask[1], ...)` (if available)
+- Final tick_size = minimum of all positive differences observed
+
+---
+
 ## 3) Time-weighted mean over a sliding window
 
 Let the current time be `T` (ms) and the window width be `W` (ms). Treat `IB_t` as piecewise-constant between updates (e.g., L2 changes). Maintain segments `(start_ms, end_ms, ib_value)` that fall within `[T-W, T]`. The time-weighted mean is:
