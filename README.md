@@ -7,14 +7,15 @@ This package provides common, reusable utilities for statistical analysis of mar
 - **`compute_total_size`**: Calculates the total size from time-series data. Found in `size.py`.
 - **`VMF`**: Calculates the Volume-weighted Market Flow (VMF) indicator, providing normalized insights into trade velocity. Found in `vmf.py`.
 - **Markout Skew**: Computes side-conditional markouts and skew using completion-time sliding windows; supports clock-time and event-time horizons. Found in `markout_skew.py`.
-- **Protocols (`HasPrice`, `HasSize`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
+- **Queue Imbalance**: Calculates depth-weighted queue imbalance using exponential distance weighting and time-weighted averaging. Found in `queue_imbalance.py`.
+- **Protocols (`HasPrice`, `HasSize`, `L3Trade`, `MidPrice`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
 
 
 ## Installation
 
 You can install this package directly from GitHub.
 
-### Latest Version (v0.5.0)
+### Latest Version (v0.6.0)
 
 For new projects, install the latest version to get all features and the most flexible architecture:
 ```bash
@@ -22,7 +23,7 @@ pip install git+https://github.com/panicfarm/statbot_common.git
 ```
 Or to install a specific version:
 ```bash
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.5.0
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.6.0
 ```
 
 ### Legacy Version (v2.0.0)
@@ -38,8 +39,21 @@ For development (includes pytest):
 pip install git+https://github.com/panicfarm/statbot_common.git[dev]
 
 # For a specific version
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.5.0#egg=statbot_common[dev]
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.6.0#egg=statbot_common[dev]
 ```
+
+## What's New in v0.6.0
+
+- Added queue imbalance utilities for L2 depth analysis:
+  - New module `queue_imbalance.py` exporting:
+    - `QueueImbalanceCalculator`, `QueueImbalanceConfig`
+    - Utilities: `compute_exponential_weights`, `sizes_on_tick_grid`, `compute_ib`
+  - Re-exported in package `__init__` for direct import from `statbot_common`.
+- Exponential distance weighting with configurable half-life (in ticks)
+- Time-weighted averaging over sliding windows
+- Tick-normalized depth extraction with zero-padding for missing levels
+
+These additions implement depth-weighted queue imbalance calculation, supporting market microstructure analysis of order book pressure.
 
 ## What's New in v0.5.0
 
@@ -231,6 +245,65 @@ print(skew_stats)  # {'mplus': ..., 'mminus': ..., 'skew': ..., 'n_buys': ..., '
   - `window_ms`: Completion-time sliding window size (default 300000 ms)
 - **Returns**: `get_markout_skew(T)` → `Dict[str, Optional[float]]` with keys `mplus`, `mminus`, `skew`, `n_buys`, `n_sells`.
 - **Notes**: Timestamps auto-normalize to milliseconds; missing side counts yield `None` for the corresponding means and `skew`.
+
+### Queue Imbalance
+
+Calculates depth-weighted queue imbalance using exponential distance weighting and time-weighted averaging over sliding windows.
+
+```python
+from decimal import Decimal
+from statbot_common import (
+    QueueImbalanceCalculator,
+    QueueImbalanceConfig,
+    compute_exponential_weights,
+    sizes_on_tick_grid,
+    compute_ib,
+)
+
+# Configure calculator for SOL/USDT with 0.01 tick size
+# K=3 levels per side, half-life=0.5 ticks, 30-second window
+config = QueueImbalanceConfig(
+    k_levels=3,
+    tick_size=Decimal("0.01"),
+    half_life_ticks=Decimal("0.5"),
+    window_ms=30_000,
+)
+calc = QueueImbalanceCalculator(config)
+
+# Example order book snapshot at timestamp t_ms
+t_ms = 1700000000000
+best_bid = Decimal("100.00")
+best_ask = Decimal("100.01")
+bids = {Decimal("100.00"): Decimal("10"), Decimal("99.99"): Decimal("5"), Decimal("99.98"): Decimal("2")}
+asks = {Decimal("100.01"): Decimal("8"), Decimal("100.02"): Decimal("4"), Decimal("100.03"): Decimal("1")}
+
+# Update calculator with current book state
+ib_t = calc.update_from_book(t_ms, best_bid, best_ask, bids, asks)
+print(f"Instantaneous imbalance IB_t: {ib_t}")
+
+# Get time-weighted mean over the window
+tw_mean = calc.get_time_weighted_mean(t_ms + 1000)
+print(f"Time-weighted mean: {tw_mean}")
+
+# Manual calculation example
+weights = compute_exponential_weights(3, Decimal("0.5"))  # [1.0, 0.25, 0.0625]
+bid_sizes, ask_sizes = sizes_on_tick_grid(best_bid, best_ask, Decimal("0.01"), 3, bids, asks)
+ib = compute_ib(bid_sizes, ask_sizes, weights)
+print(f"Manual IB calculation: {ib}")
+```
+
+- **Module**: `statbot_common.queue_imbalance`
+- **Core types**: `QueueImbalanceCalculator`, `QueueImbalanceConfig`
+- **Utilities**: `compute_exponential_weights`, `sizes_on_tick_grid`, `compute_ib`
+- **Configuration**:
+  - `k_levels`: Number of tick levels per side to include (default 10)
+  - `tick_size`: Minimum price increment as `Decimal` (required)
+  - `half_life_ticks`: Exponential decay half-life in ticks (default 0.5)
+  - `window_ms`: Time-weighted averaging window in milliseconds (default 30000)
+- **Returns**: 
+  - `update_from_book(...)` → `Optional[Decimal]` (instantaneous IB_t or `None`)
+  - `get_time_weighted_mean(t_ms)` → `Optional[Decimal]` (time-weighted mean or `None`)
+- **Notes**: Uses tick-normalized grid with zero-padding for missing levels; IB_t ranges from -1 (ask pressure) to +1 (bid pressure); requires `Decimal` for all price/size inputs.
 
 ### Data Protocols
 
