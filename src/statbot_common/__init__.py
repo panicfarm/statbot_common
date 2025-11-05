@@ -21,9 +21,18 @@ from .queue_imbalance import (
     QueueImbalanceConfig,
     QueueImbalanceCalculator,
 )
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = version("statbot-common")
+# Attempt to grab the installed package version.  When the project is
+# imported from source (e.g. in a testing environment where the package has
+# not been installed), ``importlib.metadata.version`` raises a
+# ``PackageNotFoundError``.  Previously this bubbled up during import and
+# prevented the library from being used at all.  Instead, fall back to a
+# sensible default so the modules can be imported without installation.
+try:
+    __version__ = version("statbot-common")
+except PackageNotFoundError:  # pragma: no cover - exercised in tests
+    __version__ = "0.0.0"
 
 # This defines the public API for the package.
 # When a user does `from statbot_common import *`, only these names will be imported.

@@ -111,8 +111,13 @@ def compute_vmf(
     # Get the latest VMF_raw value for normalization
     latest_vmf_raw = vmf_raw_values[-1]
     
-    # Avoid division by zero
-    if std_vmf_raw == 0:
+    # Avoid division by zero or extremely small standard deviations that arise
+    # from floating point rounding errors when all VMF_raw values are
+    # effectively identical.  Using direct equality can misclassify a near-zero
+    # standard deviation as non-zero, leading to spurious large normalized
+    # results (e.g. constant velocity test returning ``1.0``).  Treat values
+    # close to zero within a tiny tolerance as zero.
+    if math.isclose(std_vmf_raw, 0.0, abs_tol=1e-12):
         logging.debug("VMF calc: Standard deviation is zero, returning 0.0.")
         return 0.0
     
