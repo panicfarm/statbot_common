@@ -46,29 +46,31 @@ def test_ib_symmetry_and_extremes():
     # Symmetry: equal sizes => IB = 0
     b = [Decimal("10"), Decimal("10"), Decimal("10")]
     a = [Decimal("10"), Decimal("10"), Decimal("10")]
-    ib0 = qi.compute_ib(b, a, w)
-    assert ib0 is not None
-    assert abs(float(ib0)) <= 1e-12
+    q0 = qi.compute_queue_diff(b, a, w)
+    assert q0 is not None
+    assert abs(float(q0)) <= 1e-12
 
-    # All ask zero => IB = +1
+    # All ask zero => raw QI equals weighted bid depth
     b = [Decimal("5"), Decimal("2"), Decimal("1")]
     a = [Decimal("0"), Decimal("0"), Decimal("0")]
-    ib_pos = qi.compute_ib(b, a, w)
-    assert ib_pos is not None
-    assert pytest.approx(float(ib_pos), rel=1e-12, abs=1e-12) == 1.0
+    q_pos = qi.compute_queue_diff(b, a, w)
+    assert q_pos is not None
+    # D_bid = 5 + 0.5*2 + 0.25*1 = 25/4
+    assert q_pos == (Decimal(25) / Decimal(4))
 
-    # All bid zero => IB = -1
+    # All bid zero => raw QI equals negative weighted ask depth
     b = [Decimal("0"), Decimal("0"), Decimal("0")]
     a = [Decimal("3"), Decimal("2"), Decimal("1")]
-    ib_neg = qi.compute_ib(b, a, w)
-    assert ib_neg is not None
-    assert pytest.approx(float(ib_neg), rel=1e-12, abs=1e-12) == -1.0
+    q_neg = qi.compute_queue_diff(b, a, w)
+    assert q_neg is not None
+    # D_ask = 3 + 0.5*2 + 0.25*1 = 17/4
+    assert q_neg == -(Decimal(17) / Decimal(4))
 
     # Zero denominator => None
     b = [Decimal("0"), Decimal("0"), Decimal("0")]
     a = [Decimal("0"), Decimal("0"), Decimal("0")]
-    ib_none = qi.compute_ib(b, a, w)
-    assert ib_none is None
+    q_none = qi.compute_queue_diff(b, a, w)
+    assert q_none is None
 
 
 def test_ib_normal_value():
@@ -79,15 +81,15 @@ def test_ib_normal_value():
     b = [Decimal("10"), Decimal("5"), Decimal("1")]  # bids
     a = [Decimal("8"), Decimal("3"), Decimal("2")]   # asks
 
-    ib = qi.compute_ib(b, a, w)
-    assert ib is not None
+    q = qi.compute_queue_diff(b, a, w)
+    assert q is not None
 
-    # Manual expected:
-    # D_bid = 10 + 0.5*5 + 0.25*1 = 12.75
-    # D_ask =  8 + 0.5*3 + 0.25*2 = 10.00
-    # IB = (12.75 - 10.00) / (12.75 + 10.00) = 2.75 / 22.75 = 11/91 ≈ 0.1208791208791209
-    expected = Decimal(11) / Decimal(91)
-    assert ib == expected
+    # Manual expected (raw):
+    # D_bid = 10 + 0.5*5 + 0.25*1 = 12.75 = 51/4
+    # D_ask =  8 + 0.5*3 + 0.25*2 = 10.00 = 40/4
+    # QI = 51/4 - 40/4 = 11/4
+    expected = Decimal(11) / Decimal(4)
+    assert q == expected
 
     # Extended case: K=4 while the book has 7 levels per side
     # Build a 7-level book around the touch
@@ -122,15 +124,15 @@ def test_ib_normal_value():
     assert b4 == [Decimal("10"), Decimal("9"), Decimal("8"), Decimal("7")]
     assert a4 == [Decimal("8"), Decimal("7"), Decimal("6"), Decimal("5")]
 
-    ib4 = qi.compute_ib(b4, a4, w4)
-    assert ib4 is not None
+    qi4 = qi.compute_queue_diff(b4, a4, w4)
+    assert qi4 is not None
 
     # Manual expected using weights [1, 1/2, 1/4, 1/8]
     # D_bid = 10 + 0.5*9 + 0.25*8 + 0.125*7 = 139/8 = 17.375
     # D_ask =  8 + 0.5*7 + 0.25*6 + 0.125*5 = 109/8 = 13.625
-    # IB = (139/8 - 109/8) / (139/8 + 109/8) = (30/8) / (248/8) = 30/248 = 15/124
-    expected4 = Decimal(15) / Decimal(124)
-    assert ib4 == expected4
+    # QI = (139/8) - (109/8) = 30/8 = 15/4
+    expected4 = Decimal(15) / Decimal(4)
+    assert qi4 == expected4
 
 def test_time_weighted_mean_segments():
     # Configure calculator
@@ -144,20 +146,20 @@ def test_time_weighted_mean_segments():
 
     # Synthetic book snapshots at base epoch ms to avoid unit inference issues
     base = 1_700_000_000_000  # ms
-    # Segment1: IB = +1 from [base, base+5000)
+    # Segment1: QI = +10 from [base, base+5000)
     bids1 = {Decimal("100.00"): Decimal("10")}
     asks1 = {Decimal("100.01"): Decimal("0")}
     calc.update_from_book(base, Decimal("100.00"), Decimal("100.01"), bids1, asks1)
 
-    # Segment2: IB = -1 from [base+5000, base+10000)
+    # Segment2: QI = -8 from [base+5000, base+10000)
     bids2 = {Decimal("100.00"): Decimal("0")}
     asks2 = {Decimal("100.01"): Decimal("8")}
     calc.update_from_book(base + 5000, Decimal("100.00"), Decimal("100.01"), bids2, asks2)
 
     # Evaluate TW mean at T=base+10000 over window [base, base+10000]
     tw = calc.get_time_weighted_mean(base + 10_000)
-    # Half time at +1, half at -1 => mean 0
+    # Raw segments: +10 for 5s, then -8 for 5s => TW mean = +1
     assert tw is not None
-    assert abs(float(tw)) <= 1e-12
+    assert tw == Decimal(1)
 
 

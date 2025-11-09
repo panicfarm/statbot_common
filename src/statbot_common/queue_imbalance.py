@@ -72,7 +72,7 @@ def compute_ib(
     ask_sizes: List[Decimal],
     weights: List[Decimal],
 ) -> Optional[Decimal]:
-    """Compute instantaneous imbalance IB_t from weighted queues.
+    """Compute instantaneous imbalance IB_t from weighted queues (normalized).
 
     IB = (D_bid - D_ask) / (D_bid + D_ask), None if denominator == 0.
     """
@@ -91,6 +91,29 @@ def compute_ib(
     return (d_bid - d_ask) / denom
 
 
+def compute_queue_diff(
+    bid_sizes: List[Decimal],
+    ask_sizes: List[Decimal],
+    weights: List[Decimal],
+) -> Optional[Decimal]:
+    """Compute raw queue imbalance QI_t from weighted queues.
+
+    QI = D_bid - D_ask (unbounded). Returns None if both D_bid and D_ask are zero.
+    """
+    if len(bid_sizes) != len(ask_sizes) or len(bid_sizes) != len(weights):
+        raise ValueError("bid_sizes, ask_sizes, and weights must have equal length")
+
+    d_bid = Decimal("0")
+    d_ask = Decimal("0")
+    for s_b, s_a, w in zip(bid_sizes, ask_sizes, weights):
+        d_bid += w * s_b
+        d_ask += w * s_a
+
+    if d_bid == Decimal("0") and d_ask == Decimal("0"):
+        return None
+    return d_bid - d_ask
+
+
 @dataclass
 class QueueImbalanceConfig:
     k_levels: int
@@ -100,9 +123,9 @@ class QueueImbalanceConfig:
 
 
 class QueueImbalanceCalculator:
-    """Maintains instantaneous IB_t and its time-weighted mean over a window.
+    """Maintains instantaneous QI_t and its time-weighted mean over a window.
 
-    IB_t is treated as piecewise-constant between update times.
+    QI_t is treated as piecewise-constant between update times.
     """
 
     def __init__(self, config: QueueImbalanceConfig) -> None:
@@ -128,9 +151,9 @@ class QueueImbalanceCalculator:
         bids: Mapping[Decimal, Decimal],
         asks: Mapping[Decimal, Decimal],
     ) -> Optional[Decimal]:
-        """Compute IB_t from the provided book snapshot and update segments.
+        """Compute QI_t from the provided book snapshot and update segments.
 
-        Returns the instantaneous IB_t (or None if undefined).
+        Returns the instantaneous QI_t (or None if undefined).
         """
         now_ms = normalize_timestamp_to_ms(t_ms)
         if self._last_time_ms is not None and now_ms < self._last_time_ms:
@@ -148,9 +171,10 @@ class QueueImbalanceCalculator:
                 bids=bids,
                 asks=asks,
             )
-            ib_value = compute_ib(bid_sizes, ask_sizes, self.weights)
+            # Use raw queue difference as the instantaneous indicator value
+            ib_value = compute_queue_diff(bid_sizes, ask_sizes, self.weights)
 
-        # Segment management (piecewise-constant IB)
+        # Segment management (piecewise-constant QI)
         prev_val = self._current_value
         prev_start = self._current_start_ms
 
