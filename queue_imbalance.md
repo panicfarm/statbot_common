@@ -7,8 +7,8 @@ This document defines the Depth/Queue Imbalance indicator implemented in `statbo
 - Implemented here (library, exchange-agnostic):
   - Tick-normalized depth extraction around the touch up to `K` levels, padding missing ticks with zero size
   - Exponential distance-weighting by tick distance using a half-life parameter (in ticks)
-  - Instantaneous imbalance IB_t from weighted bid/ask queues
-  - Time-weighted sliding-window mean of IB_t over an adjustable window W
+  - Instantaneous queue imbalance QI_t (raw: D_bid − D_ask) from weighted bid/ask queues
+  - Time-weighted sliding-window mean of QI_t over an adjustable window W
   - Timestamp normalization to milliseconds and state snapshot/restore
 - Expected from the caller (application layer):
   - Resolve tick size for the instrument (e.g., via exchange API)
@@ -41,13 +41,13 @@ D_{\text{bid}} = \sum_{k=1}^{K} w_k \cdot V_b^{(k)}
 D_{\text{ask}} = \sum_{k=1}^{K} w_k \cdot V_a^{(k)}
 ```
 
-- Instantaneous imbalance (bounded):
+- Instantaneous queue imbalance (raw, unbounded):
 
 ```math
-\text{IB}_t = \frac{D_{\text{bid}} - D_{\text{ask}}}{D_{\text{bid}} + D_{\text{ask}}} \in (-1, 1)
+\text{QI}_t = D_{\text{bid}} - D_{\text{ask}}
 ```
-  
-  If `D_bid + D_ask = 0`, return `None` (undefined).
+
+If both `D_bid = 0` and `D_ask = 0`, return `None`.
 
 ---
 
@@ -60,28 +60,14 @@ Given best bid `p^b`, best ask `p^a`, and `tick_size`:
 
 ---
 
-## 2.5) Automatic tick size inference (optional enhancement)
-
-While the library requires `tick_size` to be provided explicitly, applications can automatically infer it from the order book structure when not available from exchange metadata:
-
-- Observe the top two price levels on each side (bids: highest two; asks: lowest two)
-- Calculate positive price differences between adjacent levels
-- Choose the minimum observed difference as the inferred tick size
-- This approach provides a robust estimate for most liquid instruments with sufficient book depth
-
-Example implementation:
-- Bid side: `tick_size = min(bid[0] - bid[1], bid[1] - bid[2], ...)` (if available)
-- Ask side: `tick_size = min(ask[1] - ask[0], ask[2] - ask[1], ...)` (if available)
-- Final tick_size = minimum of all positive differences observed
-
----
+ 
 
 ## 3) Time-weighted mean over a sliding window
 
-Let the current time be `T` (ms) and the window width be `W` (ms). Treat `IB_t` as piecewise-constant between updates (e.g., L2 changes). Maintain segments `(start_ms, end_ms, ib_value)` that fall within `[T-W, T]`. The time-weighted mean is:
+Let the current time be `T` (ms) and the window width be `W` (ms). Treat `QI_t` as piecewise-constant between updates (e.g., L2 changes). Maintain segments `(start_ms, end_ms, qi_value)` that fall within `[T-W, T]`. The time-weighted mean is:
 
 ```math
-\text{queue\_imbalance\_tw}(T) = \frac{\sum \text{ib\_value} \cdot \Delta t}{\sum \Delta t}
+\text{queue\_imbalance\_tw}(T) = \frac{\sum \text{QI\_value} \cdot \Delta t}{\sum \Delta t}
 ```
 
 where the sum is over segments within the window and `Δt` is the segment overlap with `[T-W, T]`.
@@ -95,7 +81,7 @@ If no covered time exists in-window, return `None`.
 - `QueueImbalanceConfig(k_levels: int, tick_size: Decimal, half_life_ticks: Decimal, window_ms: int)`
 - `QueueImbalanceCalculator(config)`
   - `update_from_book(t_ms: int, best_bid: Decimal, best_ask: Decimal, bids: Mapping[Decimal, Decimal], asks: Mapping[Decimal, Decimal]) -> Optional[Decimal]`
-    - Computes current `IB_t` from the provided book snapshot (tick-normalized) and returns it (or `None` if undefined). Also updates the internal piecewise-constant segment ending at `t_ms`.
+    - Computes current `QI_t` from the provided book snapshot (tick-normalized) and returns it (or `None` if undefined). Also updates the internal piecewise-constant segment ending at `t_ms`.
   - `get_time_weighted_mean(current_time_ms: int) -> Optional[Decimal]`
     - Returns `queue_imbalance_tw` over `[current_time_ms - window_ms, current_time_ms]`.
   - `get_state() -> dict` / `restore_from_state(state: dict) -> None`
@@ -103,7 +89,7 @@ If no covered time exists in-window, return `None`.
 - Utilities (exposed for testing):
   - `compute_exponential_weights(k_levels: int, half_life_ticks: Decimal) -> List[Decimal]`
   - `sizes_on_tick_grid(best_bid: Decimal, best_ask: Decimal, tick_size: Decimal, k_levels: int, bids: Mapping[Decimal, Decimal], asks: Mapping[Decimal, Decimal]) -> Tuple[List[Decimal], List[Decimal]]`
-  - `compute_ib(bid_sizes: List[Decimal], ask_sizes: List[Decimal], weights: List[Decimal]) -> Optional[Decimal]`
+  - `compute_queue_diff(bid_sizes: List[Decimal], ask_sizes: List[Decimal], weights: List[Decimal]) -> Optional[Decimal]`
 
 All functions use `Decimal` for prices/sizes/weights; timestamps are normalized to milliseconds.
 
@@ -113,7 +99,7 @@ All functions use `Decimal` for prices/sizes/weights; timestamps are normalized 
 
 - If either side of the book is missing best price, skip update and return `None`.
 - If `tick_size <= 0` or `half_life_ticks <= 0`, raise `ValueError`.
-- If `D_bid + D_ask = 0`, `IB_t` is `None`.
+- If `D_bid = 0` and `D_ask = 0`, `QI_t` is `None`.
 - Window with no covered time returns `None`.
 
 ---
@@ -130,15 +116,15 @@ All functions use `Decimal` for prices/sizes/weights; timestamps are normalized 
 ## 7) Defaults
 
 - Default half-life: `0.5` ticks (very front-heavy weighting).
-- Default behavior does not normalize weights; the ratio is scale-invariant.
+- Weights are not normalized; the indicator reports the raw difference in size units.
 
 ---
 
 ## 8) Interpretation (brief)
 
-- `IB_t ≈ 0`: balanced queues near the touch
-- `IB_t >> 0`: more weighted depth on the bid side (supportive)
-- `IB_t << 0`: more weighted depth on the ask side (resistance)
+- `QI_t ≈ 0`: balanced queues near the touch
+- `QI_t >> 0`: more weighted depth on the bid side (supportive)
+- `QI_t << 0`: more weighted depth on the ask side (resistance)
 - Rapid sustained cross of the time-weighted mean can indicate a structural shift in passive liquidity.
 
 
