@@ -209,7 +209,7 @@ class QueueImbalanceCalculator:
             self._segments.popleft()
 
     def get_time_weighted_mean(self, current_time_ms: int) -> Optional[Decimal]:
-        """Return time-weighted mean of IB over [T - W, T]."""
+        """Return time-weighted mean of QI over [T - W, T]."""
         T = normalize_timestamp_to_ms(current_time_ms)
         window_start = T - self.config.window_ms
         self._prune(window_start)
