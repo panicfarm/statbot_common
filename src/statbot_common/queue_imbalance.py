@@ -161,7 +161,7 @@ class QueueImbalanceCalculator:
             now_ms = self._last_time_ms
         self._last_time_ms = now_ms
 
-        ib_value: Optional[Decimal] = None
+        qi_value: Optional[Decimal] = None
         if best_bid is not None and best_ask is not None:
             bid_sizes, ask_sizes = sizes_on_tick_grid(
                 best_bid=best_bid,
@@ -172,7 +172,7 @@ class QueueImbalanceCalculator:
                 asks=asks,
             )
             # Use raw queue difference as the instantaneous indicator value
-            ib_value = compute_queue_diff(bid_sizes, ask_sizes, self.weights)
+            qi_value = compute_queue_diff(bid_sizes, ask_sizes, self.weights)
 
         # Segment management (piecewise-constant QI)
         prev_val = self._current_value
@@ -180,29 +180,29 @@ class QueueImbalanceCalculator:
 
         if prev_val is None:
             # Previously undefined
-            if ib_value is not None:
+            if qi_value is not None:
                 # Start new open segment
                 self._current_start_ms = now_ms
-                self._current_value = ib_value
+                self._current_value = qi_value
         else:
             # Previously defined
-            if ib_value is None:
+            if qi_value is None:
                 # Close existing segment at now_ms
                 if prev_start is not None and now_ms > prev_start:
                     self._segments.append((prev_start, now_ms, prev_val))
                 self._current_start_ms = None
                 self._current_value = None
-            elif ib_value != prev_val:
+            elif qi_value != prev_val:
                 # Close previous and start new segment
                 if prev_start is not None and now_ms > prev_start:
                     self._segments.append((prev_start, now_ms, prev_val))
                 self._current_start_ms = now_ms
-                self._current_value = ib_value
+                self._current_value = qi_value
             else:
                 # Value unchanged: keep open segment as-is
                 pass
 
-        return ib_value
+        return qi_value
 
     def _prune(self, window_start_ms: int) -> None:
         while self._segments and self._segments[0][1] <= window_start_ms:

@@ -47,7 +47,8 @@ pip install git+https://github.com/panicfarm/statbot_common.git@v0.6.1#egg=statb
 - Added queue imbalance utilities for L2 depth analysis:
   - New module `queue_imbalance.py` exporting:
     - `QueueImbalanceCalculator`, `QueueImbalanceConfig`
-    - Utilities: `compute_exponential_weights`, `sizes_on_tick_grid`, `compute_ib`
+    - Utilities: `compute_exponential_weights`, `sizes_on_tick_grid`, `compute_queue_diff` (raw QI_t)
+    - Legacy: `compute_ib` (normalized IB_t) retained for back-compat
   - Re-exported in package `__init__` for direct import from `statbot_common`.
 - Exponential distance weighting with configurable half-life (in ticks)
 - Time-weighted averaging over sliding windows
