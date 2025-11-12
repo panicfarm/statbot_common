@@ -18,13 +18,13 @@ This document specifies the Aggressive Volume Concentration Index (AVCI) as impl
 ## 1) Inputs and Notation
 
 Each L3 fill i has:
-- Timestamp \(t_i\)
-- Aggressor side \(s_i\in\{+1,-1\}\)
-- Quantity \(q_i>0\)
-- Taker order ID \(\tau_i\)
+- Timestamp $t_i$
+- Aggressor side $s_i\in\{+1,-1\}$
+- Quantity $q_i>0$
+- Taker order ID $\tau_i$
 - Maker order ID (unused here)
 
-Fix a window end time \(T\) and width \(W>0\). The active set:
+Fix a window end time $T$ and width $W>0$. The active set:
 
 ```math
 \mathcal{I}_T := \{\, i : t_i \in [T-W,\,T] \,\}.
@@ -45,7 +45,7 @@ v_j(T) := \sum_{i\in\mathcal{I}_T : \tau_i=j} q_i,
 V(T) := \sum_{j\in\mathcal{J}_T} v_j(T).
 ```
 
-(For buy-only / sell-only variants, simply restrict \(\mathcal{I}_T\) to fills with \(s_i=+1\) or \(s_i=-1\).)
+(For buy-only / sell-only variants, simply restrict $\mathcal{I}_T$ to fills with $s_i=+1$ or $s_i=-1$.)
 
 ---
 
@@ -80,7 +80,7 @@ N_{\text{eff}}(T) := \frac{1}{\text{AVCI}(T)} \in [1,\,N(T)].
 
 ### Top-k Share (Optional Diagnostic)
 
-If \(v_{(1)}\ge v_{(2)}\ge\cdots\) are sorted:
+If $v_{(1)}\ge v_{(2)}\ge\cdots$ are sorted:
 
 ```math
 S_k(T) := \frac{\sum_{\ell=1}^{k} v_{(\ell)}(T)}{V(T)}.
@@ -109,13 +109,13 @@ Each bucket (combined / buy / sell) maintains:
 - A timestamp-ordered deque of fills in-window  
 - `vol_by_taker[j] = v_j`
 - Scalars:
-  - \(V = \sum_j v_j\)
-  - \(\Sigma_2 = \sum_j v_j^2\)
-  - \(N = |\{j: v_j>0\}|\)
+  - $V = \sum_j v_j$
+  - $\Sigma_2 = \sum_j v_j^2$
+  - $N = |\{j: v_j>0\}|$
 
-### Insert (arrival at time \(t\))
+### Insert (arrival at time $t$)
 
-Let old \(x = v_{\tau}\) (default 0), new \(x' = x+q\):
+Let old $x = v_{\tau}$ (default 0), new $x' = x+q$:
 
 ```math
 V \gets V + q
@@ -125,11 +125,11 @@ V \gets V + q
 \Sigma_2 \gets \Sigma_2 - x^2 + (x+q)^2
 ```
 
-If \(x=0\) then \(N\gets N+1\).
+If $x=0$ then $N\gets N+1$.
 
-### Evict (while oldest fill has \(t < T-W\))
+### Evict (while oldest fill has $t < T-W$)
 
-Let old \(x=v_{\tau}\), new \(x'=x-q\):
+Let old $x=v_{\tau}$, new $x'=x-q$:
 
 ```math
 V \gets V - q
@@ -139,7 +139,7 @@ V \gets V - q
 \Sigma_2 \gets \Sigma_2 - x^2 + (x-q)^2
 ```
 
-If \(x=q\) then remove \(\tau\) and decrement \(N\).
+If $x=q$ then remove $\tau$ and decrement $N$.
 
 ### Compute (O(1))
 
@@ -171,7 +171,7 @@ Returned structure:
 
 ## 5) Edge Handling / Hygiene
 
-- If \(V=0\), return `None`.
+- If $V=0$, return `None`.
 - Assumes stable `takerOrderId` across partial fills.
 - Memory usage scales with fills and unique taker IDs in-window.
 - Optional diagnostics (top-k) should be bounded if needed.
