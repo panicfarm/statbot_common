@@ -1,6 +1,6 @@
 # Aggressive Volume Concentration Index (AVCI) — Library Implementation (statbot_common)
 
-This document specifies the Aggressive Volume Concentration Index (AVCI) as implemented in `statbot_common`. AVCI measures how concentrated aggressive volume is within a time window — whether a few large taker orders dominate, or volume is spread across many small taker orders.
+This document specifies the Aggressive Volume Concentration Index (AVCI) for implementation in `statbot_common`. AVCI measures how concentrated aggressive volume is within a time window — whether a few large taker orders dominate, or volume is spread across many small taker orders.
 
 ### Scope
 
@@ -54,8 +54,8 @@ V(T) := \sum_{j\in\mathcal{J}_T} v_j(T).
 ### Core Metric — AVCI
 
 ```math
-\text{AVCI}(T) := \sum_{j\in\mathcal{J}_T} \left( \frac{v_j(T)}{V(T)} \right)^2,
-\qquad V(T)>0.
+\text{AVCI}(T) := \sum_{j\in\mathcal{J}_T} \left( \frac{v_j(T)}{V(T)} \right)^2
+\quad \text{for } V(T)>0.
 ```
 
 Range:
@@ -100,6 +100,10 @@ Range:
 \text{AVCI}_{\text{excess}}(T) \in [\,0,\,N(T)-1\,].
 ```
 
+Optionally, a normalized variant
+$\text{AVCI}_{\text{norm}}(T) := \frac{\text{AVCI}_{\text{excess}}(T)}{N(T)-1}$ for $N(T) > 1$
+lies in $[0,1]$ and can be used for cross-window comparisons when $N(T)$ varies.
+
 ---
 
 ## 3) Sliding-Window Maintenance (Time-Based)
@@ -112,6 +116,13 @@ Each bucket (combined / buy / sell) maintains:
   - $V = \sum_j v_j$
   - $\Sigma_2 = \sum_j v_j^2$
   - $N = |\{j: v_j>0\}|$
+
+Here $N$ is the current number of active taker IDs, so at window end $T$ we have $N = N(T)$.
+
+Assumptions:
+
+- Fills are supplied to each bucket in non-decreasing timestamp order.
+- Evictions remove fills from the head of the deque in timestamp order.
 
 ### Insert (arrival at time $t$)
 
