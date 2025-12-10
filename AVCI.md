@@ -8,7 +8,7 @@ This document specifies the Aggressive Volume Concentration Index (AVCI) for imp
   - Ingestion of L3 prints (fills) with `takerOrderId`, `makerOrderId`, `side`, `qty`, `timestamp`
   - Per-window aggregation of aggressive size by taker order ID
   - Time-based sliding-window maintenance with O(1) updates
-  - Computation of AVCI and companion statistics (effective count, top-k share)
+- Computation of AVCI and companion statistics (excess concentration)
   - Optional side-conditional variants (buy-only, sell-only)
 
 - Expected from the caller (application layer): see `qbot/notes/AVCI.md` for replay ordering, feed ingestion, configuration, and diagnostics.
@@ -67,24 +67,6 @@ Range:
 - = 1 when one taker order accounts for all aggressive volume.
 - = 1 / N(T) when volume is split equally across N(T) takers.
 - Lower values ⇒ diffuse flow; higher values ⇒ concentration.
-
----
-
-### Effective Count (Equal-Size Equivalent)
-
-```math
-N_{\text{eff}}(T) := \frac{1}{\text{AVCI}(T)} \in [1,\,N(T)].
-```
-
----
-
-### Top-k Share (Optional Diagnostic)
-
-If $v_{(1)}\ge v_{(2)}\ge\cdots$ are sorted:
-
-```math
-S_k(T) := \frac{\sum_{\ell=1}^{k} v_{(\ell)}(T)}{V(T)}.
-```
 
 ---
 
@@ -157,12 +139,8 @@ If $x=q$ then remove $\tau$ and decrement $N$.
 ```math
 \text{AVCI} = \frac{\Sigma_2}{V^2},
 \qquad
-N_{\text{eff}} = \frac{1}{\text{AVCI}},
-\qquad
 \text{AVCI}_{\text{excess}} = N\cdot\text{AVCI} - 1.
 ```
-
-Top-k requires a partial sort on demand.
 
 ---
 
@@ -172,7 +150,7 @@ Returned structure:
 
 ```
 {
-  combined: { avci, n_eff, avci_excess, N, V, (optional) top_k },
+  combined: { avci, avci_excess, N, V },
   buy:      { ... },
   sell:     { ... }
 }
@@ -191,7 +169,7 @@ Returned structure:
 
 ## 6) API outline (summary)
 
-- `AvciConfig(window_ms, mode, track_topk)`
+- `AvciConfig(window_ms, mode)`
 - `AvciCalculator(config)`
   - `add_fill(...)`
   - `evict_to(...)`
@@ -201,9 +179,7 @@ Returned structure:
 Returned per bucket:
 
 - `avci`
-- `n_eff`
 - `avci_excess`
 - `N`, `V`
-- `top_k` (optional)
 
 

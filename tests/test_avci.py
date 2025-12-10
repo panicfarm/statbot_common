@@ -74,9 +74,9 @@ class TestEdgeCases:
         combined = metrics['combined']
         
         assert combined['N'] == 1
-        assert combined['V'] == pytest.approx(100.0)
-        assert combined['avci'] == pytest.approx(1.0)
-        assert combined['avci_excess'] == pytest.approx(0.0)
+        assert float(combined['V']) == pytest.approx(100.0)
+        assert float(combined['avci']) == pytest.approx(1.0)
+        assert float(combined['avci_excess']) == pytest.approx(0.0)
 
     def test_single_taker_multiple_fills(self):
         """Test AVCI with one taker with multiple fills.
@@ -100,9 +100,9 @@ class TestEdgeCases:
         
         # v_A = 50 + 30 + 20 = 100
         assert combined['N'] == 1
-        assert combined['V'] == pytest.approx(100.0)
+        assert float(combined['V']) == pytest.approx(100.0)
         # Σ_2 = 100² = 10000, AVCI = 10000 / 10000 = 1.0
-        assert combined['avci'] == pytest.approx(1.0)
+        assert float(combined['avci']) == pytest.approx(1.0)
 
     def test_two_takers_equal_volume(self):
         """Test AVCI with two takers having equal volume.
@@ -126,11 +126,11 @@ class TestEdgeCases:
         combined = metrics['combined']
         
         assert combined['N'] == 2
-        assert combined['V'] == pytest.approx(100.0)
+        assert float(combined['V']) == pytest.approx(100.0)
         # Σ_2 = 50² + 50² = 5000, V² = 10000, AVCI = 0.5
-        assert combined['avci'] == pytest.approx(0.5)
+        assert float(combined['avci']) == pytest.approx(0.5)
         # AVCI_excess = 2 * 0.5 - 1 = 0.0
-        assert combined['avci_excess'] == pytest.approx(0.0)
+        assert float(combined['avci_excess']) == pytest.approx(0.0)
 
     def test_three_takers_equal_volume(self):
         """Test AVCI with three takers having equal volume.
@@ -156,11 +156,11 @@ class TestEdgeCases:
         combined = metrics['combined']
         
         assert combined['N'] == 3
-        assert combined['V'] == pytest.approx(90.0)
+        assert float(combined['V']) == pytest.approx(90.0)
         # Σ_2 = 2700, V² = 8100, AVCI = 2700/8100 = 1/3
-        assert combined['avci'] == pytest.approx(1.0 / 3.0)
+        assert float(combined['avci']) == pytest.approx(1.0 / 3.0)
         # AVCI_excess = 3 * (1/3) - 1 = 0.0
-        assert combined['avci_excess'] == pytest.approx(0.0)
+        assert float(combined['avci_excess']) == pytest.approx(0.0)
 
 
 # =============================================================================
@@ -191,11 +191,11 @@ class TestNonTrivialConcentration:
         combined = metrics['combined']
         
         assert combined['N'] == 2
-        assert combined['V'] == pytest.approx(100.0)
+        assert float(combined['V']) == pytest.approx(100.0)
         # Σ_2 = 6400 + 400 = 6800, AVCI = 6800/10000 = 0.68
-        assert combined['avci'] == pytest.approx(0.68)
+        assert float(combined['avci']) == pytest.approx(0.68)
         # AVCI_excess = 2 * 0.68 - 1 = 0.36
-        assert combined['avci_excess'] == pytest.approx(0.36)
+        assert float(combined['avci_excess']) == pytest.approx(0.36)
 
     def test_three_takers_varying_volumes(self):
         """Test AVCI with three takers having varying volumes.
@@ -219,11 +219,11 @@ class TestNonTrivialConcentration:
         combined = metrics['combined']
         
         assert combined['N'] == 3
-        assert combined['V'] == pytest.approx(100.0)
+        assert float(combined['V']) == pytest.approx(100.0)
         # Σ_2 = 3600 + 900 + 100 = 4600, AVCI = 4600/10000 = 0.46
-        assert combined['avci'] == pytest.approx(0.46)
+        assert float(combined['avci']) == pytest.approx(0.46)
         # AVCI_excess = 3 * 0.46 - 1 = 0.38
-        assert combined['avci_excess'] == pytest.approx(0.38)
+        assert float(combined['avci_excess']) == pytest.approx(0.38)
 
     def test_multiple_fills_same_taker_accumulated(self):
         """Test AVCI with multiple fills per taker (accumulation).
@@ -250,11 +250,11 @@ class TestNonTrivialConcentration:
         
         assert combined['N'] == 2
         # v_A = 40 + 20 = 60, v_B = 25 + 15 = 40, V = 100
-        assert combined['V'] == pytest.approx(100.0)
+        assert float(combined['V']) == pytest.approx(100.0)
         # Σ_2 = 60² + 40² = 3600 + 1600 = 5200, AVCI = 5200/10000 = 0.52
-        assert combined['avci'] == pytest.approx(0.52)
+        assert float(combined['avci']) == pytest.approx(0.52)
         # AVCI_excess = 2 * 0.52 - 1 = 0.04
-        assert combined['avci_excess'] == pytest.approx(0.04)
+        assert float(combined['avci_excess']) == pytest.approx(0.04)
 
 
 # =============================================================================
@@ -291,7 +291,7 @@ class TestSlidingWindow:
         # Before eviction
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
-        assert metrics['combined']['avci'] == pytest.approx(0.5)
+        assert float(metrics['combined']['avci']) == pytest.approx(0.5)
         
         # Evict to t=BASE+12000, cutoff = BASE+12000 - 10000 = BASE+2000
         # Fill at t=BASE+1000 < BASE+2000, so A is evicted
@@ -302,9 +302,9 @@ class TestSlidingWindow:
         
         # Only B remains
         assert combined['N'] == 1
-        assert combined['V'] == pytest.approx(50.0)
+        assert float(combined['V']) == pytest.approx(50.0)
         # Σ_2 = 2500, V² = 2500, AVCI = 1.0
-        assert combined['avci'] == pytest.approx(1.0)
+        assert float(combined['avci']) == pytest.approx(1.0)
 
     def test_window_eviction_partial_taker(self):
         """Test that window eviction partially reduces a taker's volume.
@@ -338,8 +338,8 @@ class TestSlidingWindow:
         # Before eviction
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
-        assert metrics['combined']['V'] == pytest.approx(100.0)
-        assert metrics['combined']['avci'] == pytest.approx(0.52)
+        assert float(metrics['combined']['V']) == pytest.approx(100.0)
+        assert float(metrics['combined']['avci']) == pytest.approx(0.52)
         
         # Evict to t=BASE+11500, cutoff = BASE+11500 - 10000 = BASE+1500
         # Fill at t=BASE+1000 < BASE+1500, so that fill is evicted
@@ -351,9 +351,9 @@ class TestSlidingWindow:
         # A still exists but reduced, B unchanged
         assert combined['N'] == 2
         # v_A = 30, v_B = 40, V = 70
-        assert combined['V'] == pytest.approx(70.0)
+        assert float(combined['V']) == pytest.approx(70.0)
         # Σ_2 = 900 + 1600 = 2500, V² = 4900, AVCI = 2500/4900 ≈ 0.5102
-        assert combined['avci'] == pytest.approx(2500.0 / 4900.0, rel=1e-4)
+        assert float(combined['avci']) == pytest.approx(2500.0 / 4900.0, rel=1e-4)
 
     def test_insert_evict_incremental_update(self):
         """Test that incremental O(1) updates are correct.
@@ -376,8 +376,8 @@ class TestSlidingWindow:
         calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
         
         metrics = calc.get_metrics()
-        assert metrics['combined']['V'] == pytest.approx(50.0)
-        assert metrics['combined']['avci'] == pytest.approx(1.0)
+        assert float(metrics['combined']['V']) == pytest.approx(50.0)
+        assert float(metrics['combined']['avci']) == pytest.approx(1.0)
         
         # Add another fill from same taker
         calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="A", side=1, qty=30))
@@ -387,8 +387,8 @@ class TestSlidingWindow:
         
         # v_A = 80, V = 80, Σ_2 = 6400, AVCI = 6400/6400 = 1.0
         assert combined['N'] == 1
-        assert combined['V'] == pytest.approx(80.0)
-        assert combined['avci'] == pytest.approx(1.0)
+        assert float(combined['V']) == pytest.approx(80.0)
+        assert float(combined['avci']) == pytest.approx(1.0)
 
 
 # =============================================================================
@@ -428,18 +428,18 @@ class TestSideConditionalVariants:
         
         # Combined: AVCI = 0.52
         assert metrics['combined']['N'] == 2
-        assert metrics['combined']['V'] == pytest.approx(100.0)
-        assert metrics['combined']['avci'] == pytest.approx(0.52)
+        assert float(metrics['combined']['V']) == pytest.approx(100.0)
+        assert float(metrics['combined']['avci']) == pytest.approx(0.52)
         
         # Buy only: single taker A, AVCI = 1.0
         assert metrics['buy']['N'] == 1
-        assert metrics['buy']['V'] == pytest.approx(60.0)
-        assert metrics['buy']['avci'] == pytest.approx(1.0)
+        assert float(metrics['buy']['V']) == pytest.approx(60.0)
+        assert float(metrics['buy']['avci']) == pytest.approx(1.0)
         
         # Sell only: single taker B, AVCI = 1.0
         assert metrics['sell']['N'] == 1
-        assert metrics['sell']['V'] == pytest.approx(40.0)
-        assert metrics['sell']['avci'] == pytest.approx(1.0)
+        assert float(metrics['sell']['V']) == pytest.approx(40.0)
+        assert float(metrics['sell']['avci']) == pytest.approx(1.0)
 
     def test_mixed_sides_multiple_takers(self):
         """Test AVCI with mixed sides and multiple takers.
@@ -475,18 +475,18 @@ class TestSideConditionalVariants:
         
         # Combined: Σ_2 = 2550, V² = 10000, AVCI = 0.255
         assert metrics['combined']['N'] == 4
-        assert metrics['combined']['V'] == pytest.approx(100.0)
-        assert metrics['combined']['avci'] == pytest.approx(0.255)
+        assert float(metrics['combined']['V']) == pytest.approx(100.0)
+        assert float(metrics['combined']['avci']) == pytest.approx(0.255)
         
         # Buy: Σ_2 = 1300, V² = 2500, AVCI = 0.52
         assert metrics['buy']['N'] == 2
-        assert metrics['buy']['V'] == pytest.approx(50.0)
-        assert metrics['buy']['avci'] == pytest.approx(0.52)
+        assert float(metrics['buy']['V']) == pytest.approx(50.0)
+        assert float(metrics['buy']['avci']) == pytest.approx(0.52)
         
         # Sell: Σ_2 = 1250, V² = 2500, AVCI = 0.5
         assert metrics['sell']['N'] == 2
-        assert metrics['sell']['V'] == pytest.approx(50.0)
-        assert metrics['sell']['avci'] == pytest.approx(0.5)
+        assert float(metrics['sell']['V']) == pytest.approx(50.0)
+        assert float(metrics['sell']['avci']) == pytest.approx(0.5)
 
     def test_no_sells_returns_none_for_sell(self):
         """Test that sell-only metrics return None when no sells exist."""
@@ -599,28 +599,28 @@ class TestIntegration:
         calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=100))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 1
-        assert metrics['combined']['avci'] == pytest.approx(1.0)
+        assert float(metrics['combined']['avci']) == pytest.approx(1.0)
         
         # t=BASE+2000: B sells 50
         calc.add_fill(MockFill(timestamp=BASE_TS + 2000, taker_order_id="B", side=-1, qty=50))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
         # Σ_2 = 12500, V² = 22500, AVCI ≈ 0.5556
-        assert metrics['combined']['avci'] == pytest.approx(12500.0 / 22500.0, rel=1e-4)
+        assert float(metrics['combined']['avci']) == pytest.approx(12500.0 / 22500.0, rel=1e-4)
         
         # t=BASE+3000: A buys 50 (A total = 150)
         calc.add_fill(MockFill(timestamp=BASE_TS + 3000, taker_order_id="A", side=1, qty=50))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
         # Σ_2 = 25000, V² = 40000, AVCI = 0.625
-        assert metrics['combined']['avci'] == pytest.approx(0.625)
+        assert float(metrics['combined']['avci']) == pytest.approx(0.625)
         
         # t=BASE+4000: C buys 30
         calc.add_fill(MockFill(timestamp=BASE_TS + 4000, taker_order_id="C", side=1, qty=30))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 3
         # Σ_2 = 25900, V² = 52900, AVCI ≈ 0.4896
-        assert metrics['combined']['avci'] == pytest.approx(25900.0 / 52900.0, rel=1e-4)
+        assert float(metrics['combined']['avci']) == pytest.approx(25900.0 / 52900.0, rel=1e-4)
         
         # t=BASE+6500: evict (cutoff = BASE+1500)
         calc.evict_to(BASE_TS + 6500)
@@ -628,9 +628,9 @@ class TestIntegration:
         
         # A's first fill evicted, v_A=50, v_B=50, v_C=30, V=130
         assert metrics['combined']['N'] == 3
-        assert metrics['combined']['V'] == pytest.approx(130.0)
+        assert float(metrics['combined']['V']) == pytest.approx(130.0)
         # Σ_2 = 5900, V² = 16900, AVCI ≈ 0.3491
-        assert metrics['combined']['avci'] == pytest.approx(5900.0 / 16900.0, rel=1e-4)
+        assert float(metrics['combined']['avci']) == pytest.approx(5900.0 / 16900.0, rel=1e-4)
 
     def test_complete_eviction_to_empty(self):
         """Test that evicting all fills results in empty window (None metrics)."""
