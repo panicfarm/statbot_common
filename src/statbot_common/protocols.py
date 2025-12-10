@@ -21,4 +21,12 @@ class L3Trade(Trade, Protocol):
 
 class MidPrice(HasPrice, Protocol):
     """Mid-price at a timestamp for markout calculations."""
-    timestamp: int  # Unix timestamp (any unit - will be normalized) 
+    timestamp: int  # Unix timestamp (any unit - will be normalized)
+
+
+class L3Fill(Protocol):
+    """L3 fill for AVCI calculations."""
+    timestamp: int  # Unix timestamp (any unit - will be normalized)
+    taker_order_id: str  # Aggressor order ID
+    side: Literal[1, -1]  # +1 = buy, -1 = sell
+    qty: float  # Fill quantity

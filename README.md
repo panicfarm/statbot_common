@@ -8,14 +8,15 @@ This package provides common, reusable utilities for statistical analysis of mar
 - **`VMF`**: Calculates the Volume-weighted Market Flow (VMF) indicator, providing normalized insights into trade velocity. Found in `vmf.py`.
 - **Markout Skew**: Computes side-conditional markouts and skew using completion-time sliding windows; supports clock-time and event-time horizons. Found in `markout_skew.py`.
 - **Queue Imbalance**: Calculates depth-weighted queue imbalance using exponential distance weighting and time-weighted averaging. Found in `queue_imbalance.py`.
-- **Protocols (`HasPrice`, `HasSize`, `L3Trade`, `MidPrice`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
+- **AVCI**: Aggressive Volume Concentration Index measuring how concentrated aggressive volume is within a time window. Found in `avci.py`.
+- **Protocols (`HasPrice`, `HasSize`, `L3Trade`, `MidPrice`, `L3Fill`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
 
 
 ## Installation
 
 You can install this package directly from GitHub.
 
-### Latest Version (v0.6.1)
+### Latest Version (v0.7.0)
 
 For new projects, install the latest version to get all features and the most flexible architecture:
 ```bash
@@ -23,7 +24,7 @@ pip install git+https://github.com/panicfarm/statbot_common.git
 ```
 Or to install a specific version:
 ```bash
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.6.1
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.7.0
 ```
 
 ### Legacy Version (v2.0.0)
@@ -39,8 +40,21 @@ For development (includes pytest):
 pip install git+https://github.com/panicfarm/statbot_common.git[dev]
 
 # For a specific version
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.6.1#egg=statbot_common[dev]
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.7.0#egg=statbot_common[dev]
 ```
+
+## What's New in v0.7.0
+
+- Added Aggressive Volume Concentration Index (AVCI) for L3 fill analysis:
+  - New protocol: `L3Fill` (with `taker_order_id`, `side`, `qty`).
+  - New module `avci.py` exporting:
+    - `AvciCalculator`, `AvciConfig`
+  - Re-exported in package `__init__` for direct import from `statbot_common`.
+- O(1) sliding window maintenance for efficient real-time computation
+- Side-conditional variants (combined, buy-only, sell-only)
+- Returns metrics: `avci`, `avci_excess`, `N` (taker count), `V` (total volume)
+
+AVCI measures whether aggressive volume is concentrated in a few large taker orders or spread across many small ones.
 
 ## What's New in v0.6.1
 
@@ -305,6 +319,51 @@ print(f"Manual IB calculation: {ib}")
   - `update_from_book(...)` → `Optional[Decimal]` (instantaneous IB_t or `None`)
   - `get_time_weighted_mean(t_ms)` → `Optional[Decimal]` (time-weighted mean or `None`)
 - **Notes**: Uses tick-normalized grid with zero-padding for missing levels; IB_t ranges from -1 (ask pressure) to +1 (bid pressure); requires `Decimal` for all price/size inputs.
+
+### AVCI (Aggressive Volume Concentration Index)
+
+Measures how concentrated aggressive volume is within a time window — whether a few large taker orders dominate, or volume is spread across many small taker orders.
+
+```python
+from dataclasses import dataclass
+from statbot_common import AvciCalculator, AvciConfig
+
+@dataclass
+class Fill:
+    timestamp: int
+    taker_order_id: str
+    side: int  # +1 = buy, -1 = sell
+    qty: float
+
+# Configure calculator with 10-second window
+config = AvciConfig(window_ms=10000)
+calc = AvciCalculator(config)
+
+# Add L3 fills as they arrive
+calc.add_fill(Fill(timestamp=1000, taker_order_id="A", side=1, qty=60))
+calc.add_fill(Fill(timestamp=1100, taker_order_id="B", side=1, qty=25))
+calc.add_fill(Fill(timestamp=1200, taker_order_id="C", side=-1, qty=15))
+
+# Get metrics for all three buckets (combined, buy, sell)
+metrics = calc.get_metrics()
+print(metrics['combined'])
+# {'avci': 0.46, 'avci_excess': 0.38, 'N': 3, 'V': 100.0}
+
+# Evict old fills when advancing time
+calc.evict_to(12000)  # Evicts fills older than 12000 - 10000 = 2000ms
+```
+
+- **Module**: `statbot_common.avci`
+- **Core types**: `AvciCalculator`, `AvciConfig`
+- **Protocol**: `L3Fill` (requires `timestamp`, `taker_order_id`, `side`, `qty`)
+- **Configuration**:
+  - `window_ms`: Sliding window width in milliseconds
+- **Returns**: `get_metrics()` → `Dict` with keys `combined`, `buy`, `sell`, each containing:
+  - `avci`: Concentration index (1/N for equal split, 1 for single taker); `None` if V=0
+  - `avci_excess`: N * AVCI - 1 (0 for equal split); `None` if V=0
+  - `N`: Count of active taker IDs in window
+  - `V`: Total volume in window
+- **Notes**: AVCI ∈ [1/N, 1]; higher values indicate more concentrated flow.
 
 ### Data Protocols
 

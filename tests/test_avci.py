@@ -7,7 +7,6 @@ Tests cover:
 - Non-trivial concentration calculations
 - Sliding window mechanics (insert, evict, incremental updates)
 - Side-conditional variants (buy-only, sell-only, combined)
-- Top-k share calculations
 - State save/restore
 """
 
@@ -29,6 +28,10 @@ class MockFill(NamedTuple):
     maker_order_id: str = "maker_unused"
 
 
+# Base timestamp for all tests (13-digit milliseconds, recognized by normalize_timestamp_to_ms)
+BASE_TS = 1_700_000_000_000
+
+
 # =============================================================================
 # 1. Edge Case Tests
 # =============================================================================
@@ -48,7 +51,6 @@ class TestEdgeCases:
         metrics = calc.get_metrics()
         
         assert metrics['combined']['avci'] is None
-        assert metrics['combined']['n_eff'] is None
         assert metrics['combined']['avci_excess'] is None
         assert metrics['combined']['N'] == 0
         assert metrics['combined']['V'] == 0
@@ -60,13 +62,12 @@ class TestEdgeCases:
             Fill: taker=A, qty=100, side=+1
             v_A = 100, V = 100, Σ_2 = 100² = 10000, N = 1
             AVCI = 10000 / 100² = 1.0
-            N_eff = 1 / 1.0 = 1.0
             AVCI_excess = 1 * 1.0 - 1 = 0.0
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        fill = MockFill(timestamp=1000, taker_order_id="A", side=1, qty=100)
+        fill = MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=100)
         calc.add_fill(fill)
         
         metrics = calc.get_metrics()
@@ -75,7 +76,6 @@ class TestEdgeCases:
         assert combined['N'] == 1
         assert combined['V'] == pytest.approx(100.0)
         assert combined['avci'] == pytest.approx(1.0)
-        assert combined['n_eff'] == pytest.approx(1.0)
         assert combined['avci_excess'] == pytest.approx(0.0)
 
     def test_single_taker_multiple_fills(self):
@@ -85,16 +85,15 @@ class TestEdgeCases:
             Fills: taker=A, qty=50; taker=A, qty=30; taker=A, qty=20
             v_A = 50 + 30 + 20 = 100, V = 100, Σ_2 = 100² = 10000, N = 1
             AVCI = 10000 / 10000 = 1.0
-            N_eff = 1.0
         
         One taker with multiple fills → AVCI = 1 (max concentration).
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=50))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="A", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="A", side=1, qty=20))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="A", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1200, taker_order_id="A", side=1, qty=20))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -104,7 +103,6 @@ class TestEdgeCases:
         assert combined['V'] == pytest.approx(100.0)
         # Σ_2 = 100² = 10000, AVCI = 10000 / 10000 = 1.0
         assert combined['avci'] == pytest.approx(1.0)
-        assert combined['n_eff'] == pytest.approx(1.0)
 
     def test_two_takers_equal_volume(self):
         """Test AVCI with two takers having equal volume.
@@ -114,17 +112,15 @@ class TestEdgeCases:
             v_A = 50, v_B = 50, V = 100
             Σ_2 = 50² + 50² = 2500 + 2500 = 5000
             AVCI = 5000 / 10000 = 0.5
-            N_eff = 1 / 0.5 = 2.0
             AVCI_excess = 2 * 0.5 - 1 = 0.0
-            AVCI_norm = 0.0 / (2-1) = 0.0
         
         Two takers with equal volume → AVCI = 1/N = 0.5.
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=50))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=50))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -133,8 +129,6 @@ class TestEdgeCases:
         assert combined['V'] == pytest.approx(100.0)
         # Σ_2 = 50² + 50² = 5000, V² = 10000, AVCI = 0.5
         assert combined['avci'] == pytest.approx(0.5)
-        # N_eff = 1 / 0.5 = 2.0
-        assert combined['n_eff'] == pytest.approx(2.0)
         # AVCI_excess = 2 * 0.5 - 1 = 0.0
         assert combined['avci_excess'] == pytest.approx(0.0)
 
@@ -147,7 +141,6 @@ class TestEdgeCases:
             Σ_2 = 30² + 30² + 30² = 900 + 900 + 900 = 2700
             V² = 90² = 8100
             AVCI = 2700 / 8100 = 1/3 ≈ 0.333333
-            N_eff = 1 / (1/3) = 3.0
             AVCI_excess = 3 * (1/3) - 1 = 0.0
         
         Three takers with equal volume → AVCI = 1/3.
@@ -155,9 +148,9 @@ class TestEdgeCases:
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="C", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1200, taker_order_id="C", side=1, qty=30))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -166,8 +159,6 @@ class TestEdgeCases:
         assert combined['V'] == pytest.approx(90.0)
         # Σ_2 = 2700, V² = 8100, AVCI = 2700/8100 = 1/3
         assert combined['avci'] == pytest.approx(1.0 / 3.0)
-        # N_eff = 3.0
-        assert combined['n_eff'] == pytest.approx(3.0)
         # AVCI_excess = 3 * (1/3) - 1 = 0.0
         assert combined['avci_excess'] == pytest.approx(0.0)
 
@@ -188,15 +179,13 @@ class TestNonTrivialConcentration:
             Σ_2 = 80² + 20² = 6400 + 400 = 6800
             V² = 100² = 10000
             AVCI = 6800 / 10000 = 0.68
-            N_eff = 1 / 0.68 ≈ 1.4706
             AVCI_excess = 2 * 0.68 - 1 = 0.36
-            AVCI_norm = 0.36 / (2-1) = 0.36
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=80))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=20))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=80))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=20))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -205,8 +194,6 @@ class TestNonTrivialConcentration:
         assert combined['V'] == pytest.approx(100.0)
         # Σ_2 = 6400 + 400 = 6800, AVCI = 6800/10000 = 0.68
         assert combined['avci'] == pytest.approx(0.68)
-        # N_eff = 1/0.68 ≈ 1.4706
-        assert combined['n_eff'] == pytest.approx(1.0 / 0.68, rel=1e-4)
         # AVCI_excess = 2 * 0.68 - 1 = 0.36
         assert combined['avci_excess'] == pytest.approx(0.36)
 
@@ -219,16 +206,14 @@ class TestNonTrivialConcentration:
             Σ_2 = 60² + 30² + 10² = 3600 + 900 + 100 = 4600
             V² = 100² = 10000
             AVCI = 4600 / 10000 = 0.46
-            N_eff = 1 / 0.46 ≈ 2.1739
             AVCI_excess = 3 * 0.46 - 1 = 0.38
-            AVCI_norm = 0.38 / (3-1) = 0.38 / 2 = 0.19
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=60))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="C", side=1, qty=10))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=60))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1200, taker_order_id="C", side=1, qty=10))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -237,8 +222,6 @@ class TestNonTrivialConcentration:
         assert combined['V'] == pytest.approx(100.0)
         # Σ_2 = 3600 + 900 + 100 = 4600, AVCI = 4600/10000 = 0.46
         assert combined['avci'] == pytest.approx(0.46)
-        # N_eff = 1/0.46 ≈ 2.1739
-        assert combined['n_eff'] == pytest.approx(1.0 / 0.46, rel=1e-4)
         # AVCI_excess = 3 * 0.46 - 1 = 0.38
         assert combined['avci_excess'] == pytest.approx(0.38)
 
@@ -251,17 +234,16 @@ class TestNonTrivialConcentration:
             Σ_2 = 60² + 40² = 3600 + 1600 = 5200
             V² = 100² = 10000
             AVCI = 5200 / 10000 = 0.52
-            N_eff = 1 / 0.52 ≈ 1.9231
             AVCI_excess = 2 * 0.52 - 1 = 0.04
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
         # Interleaved fills from two takers
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=40))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=25))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="A", side=1, qty=20))
-        calc.add_fill(MockFill(timestamp=1300, taker_order_id="B", side=1, qty=15))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=40))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=25))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1200, taker_order_id="A", side=1, qty=20))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1300, taker_order_id="B", side=1, qty=15))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -271,8 +253,6 @@ class TestNonTrivialConcentration:
         assert combined['V'] == pytest.approx(100.0)
         # Σ_2 = 60² + 40² = 3600 + 1600 = 5200, AVCI = 5200/10000 = 0.52
         assert combined['avci'] == pytest.approx(0.52)
-        # N_eff = 1/0.52 ≈ 1.9231
-        assert combined['n_eff'] == pytest.approx(1.0 / 0.52, rel=1e-4)
         # AVCI_excess = 2 * 0.52 - 1 = 0.04
         assert combined['avci_excess'] == pytest.approx(0.04)
 
@@ -288,16 +268,16 @@ class TestSlidingWindow:
         """Test that window eviction completely removes a taker.
         
         Manual calculation:
-            t=1000: taker=A, qty=50
-            t=2000: taker=B, qty=50
+            t=BASE+1000: taker=A, qty=50
+            t=BASE+2000: taker=B, qty=50
             
             Before eviction (both in window):
                 v_A=50, v_B=50, V=100
                 Σ_2 = 50² + 50² = 5000
                 AVCI = 5000 / 10000 = 0.5
             
-            t=12000: evict to 12000 (window=10000ms, cutoff=2000)
-            After eviction (only B remains, A's fill at t=1000 < cutoff=2000):
+            t=BASE+12000: evict to BASE+12000 (window=10000ms, cutoff=BASE+2000)
+            After eviction (only B remains, A's fill at t=BASE+1000 < cutoff=BASE+2000):
                 v_B=50, V=50
                 Σ_2 = 50² = 2500
                 AVCI = 2500 / 2500 = 1.0
@@ -305,17 +285,17 @@ class TestSlidingWindow:
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=50))
-        calc.add_fill(MockFill(timestamp=2000, taker_order_id="B", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 2000, taker_order_id="B", side=1, qty=50))
         
         # Before eviction
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
         assert metrics['combined']['avci'] == pytest.approx(0.5)
         
-        # Evict to t=12000, cutoff = 12000 - 10000 = 2000
-        # Fill at t=1000 < 2000, so A is evicted
-        calc.evict_to(12000)
+        # Evict to t=BASE+12000, cutoff = BASE+12000 - 10000 = BASE+2000
+        # Fill at t=BASE+1000 < BASE+2000, so A is evicted
+        calc.evict_to(BASE_TS + 12000)
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -330,20 +310,20 @@ class TestSlidingWindow:
         """Test that window eviction partially reduces a taker's volume.
         
         Manual calculation:
-            t=1000: taker=A, qty=30
-            t=2000: taker=A, qty=30
-            t=3000: taker=B, qty=40
+            t=BASE+1000: taker=A, qty=30
+            t=BASE+2000: taker=A, qty=30
+            t=BASE+3000: taker=B, qty=40
             
             Before eviction:
                 v_A = 30 + 30 = 60, v_B = 40, V = 100
                 Σ_2 = 60² + 40² = 3600 + 1600 = 5200
                 AVCI = 5200 / 10000 = 0.52
             
-            t=11500: evict to 11500 (window=10000ms, cutoff=1500)
-            Only t=1000 fill is evicted (1000 < 1500), t=2000 and t=3000 remain.
+            t=BASE+11500: evict to BASE+11500 (window=10000ms, cutoff=BASE+1500)
+            Only t=BASE+1000 fill is evicted (BASE+1000 < BASE+1500), t=BASE+2000 and t=BASE+3000 remain.
             
             After eviction:
-                v_A = 30 (only t=2000 fill), v_B = 40, V = 70
+                v_A = 30 (only t=BASE+2000 fill), v_B = 40, V = 70
                 Σ_2 = 30² + 40² = 900 + 1600 = 2500
                 V² = 70² = 4900
                 AVCI = 2500 / 4900 ≈ 0.5102
@@ -351,9 +331,9 @@ class TestSlidingWindow:
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=2000, taker_order_id="A", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=3000, taker_order_id="B", side=1, qty=40))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 2000, taker_order_id="A", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 3000, taker_order_id="B", side=1, qty=40))
         
         # Before eviction
         metrics = calc.get_metrics()
@@ -361,9 +341,9 @@ class TestSlidingWindow:
         assert metrics['combined']['V'] == pytest.approx(100.0)
         assert metrics['combined']['avci'] == pytest.approx(0.52)
         
-        # Evict to t=11500, cutoff = 11500 - 10000 = 1500
-        # Fill at t=1000 < 1500, so that fill is evicted
-        calc.evict_to(11500)
+        # Evict to t=BASE+11500, cutoff = BASE+11500 - 10000 = BASE+1500
+        # Fill at t=BASE+1000 < BASE+1500, so that fill is evicted
+        calc.evict_to(BASE_TS + 11500)
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -393,14 +373,14 @@ class TestSlidingWindow:
         calc = avci.AvciCalculator(config)
         
         # Initial state
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
         
         metrics = calc.get_metrics()
         assert metrics['combined']['V'] == pytest.approx(50.0)
         assert metrics['combined']['avci'] == pytest.approx(1.0)
         
         # Add another fill from same taker
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="A", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="A", side=1, qty=30))
         
         metrics = calc.get_metrics()
         combined = metrics['combined']
@@ -441,8 +421,8 @@ class TestSideConditionalVariants:
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=60))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=-1, qty=40))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=60))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=-1, qty=40))
         
         metrics = calc.get_metrics()
         
@@ -486,10 +466,10 @@ class TestSideConditionalVariants:
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=20))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="C", side=-1, qty=25))
-        calc.add_fill(MockFill(timestamp=1300, taker_order_id="D", side=-1, qty=25))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=30))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=20))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1200, taker_order_id="C", side=-1, qty=25))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1300, taker_order_id="D", side=-1, qty=25))
         
         metrics = calc.get_metrics()
         
@@ -514,8 +494,8 @@ class TestSideConditionalVariants:
         calc = avci.AvciCalculator(config)
         
         # Only buy fills
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=50))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=50))
         
         metrics = calc.get_metrics()
         
@@ -529,90 +509,7 @@ class TestSideConditionalVariants:
 
 
 # =============================================================================
-# 5. Top-k Share Tests
-# =============================================================================
-
-class TestTopKShare:
-    """Test top-k share calculations."""
-
-    def test_top_k_share(self):
-        """Test top-k share calculation.
-        
-        Manual calculation:
-            Fills: A:60, B:25, C:15 (V=100)
-            Sorted volumes: [60, 25, 15]
-            S_1 = 60/100 = 0.6
-            S_2 = (60+25)/100 = 0.85
-            S_3 = (60+25+15)/100 = 1.0
-        """
-        config = avci.AvciConfig(window_ms=10000, track_topk=3)
-        calc = avci.AvciCalculator(config)
-        
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=60))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=25))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="C", side=1, qty=15))
-        
-        metrics = calc.get_metrics()
-        top_k = metrics['combined']['top_k']
-        
-        assert top_k is not None
-        # S_1 = 60/100 = 0.6
-        assert top_k[0] == pytest.approx(0.6)
-        # S_2 = 85/100 = 0.85
-        assert top_k[1] == pytest.approx(0.85)
-        # S_3 = 100/100 = 1.0
-        assert top_k[2] == pytest.approx(1.0)
-
-    def test_top_k_with_ties(self):
-        """Test top-k share with tied volumes.
-        
-        Manual calculation:
-            Fills: A:40, B:30, C:30 (V=100)
-            Sorted volumes: [40, 30, 30]
-            S_1 = 40/100 = 0.4
-            S_2 = (40+30)/100 = 0.7
-            S_3 = (40+30+30)/100 = 1.0
-        """
-        config = avci.AvciConfig(window_ms=10000, track_topk=3)
-        calc = avci.AvciCalculator(config)
-        
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=40))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=30))
-        calc.add_fill(MockFill(timestamp=1200, taker_order_id="C", side=1, qty=30))
-        
-        metrics = calc.get_metrics()
-        top_k = metrics['combined']['top_k']
-        
-        assert top_k is not None
-        # S_1 = 40/100 = 0.4
-        assert top_k[0] == pytest.approx(0.4)
-        # S_2 = 70/100 = 0.7
-        assert top_k[1] == pytest.approx(0.7)
-        # S_3 = 100/100 = 1.0
-        assert top_k[2] == pytest.approx(1.0)
-
-    def test_top_k_fewer_takers_than_k(self):
-        """Test top-k when there are fewer takers than k."""
-        config = avci.AvciConfig(window_ms=10000, track_topk=5)
-        calc = avci.AvciCalculator(config)
-        
-        # Only 2 takers, but k=5
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=60))
-        calc.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=1, qty=40))
-        
-        metrics = calc.get_metrics()
-        top_k = metrics['combined']['top_k']
-        
-        # Should only have 2 entries since only 2 takers
-        assert top_k is not None
-        assert len(top_k) == 2
-        # S_1 = 60/100 = 0.6, S_2 = 100/100 = 1.0
-        assert top_k[0] == pytest.approx(0.6)
-        assert top_k[1] == pytest.approx(1.0)
-
-
-# =============================================================================
-# 6. State Management Tests
+# 5. State Management Tests
 # =============================================================================
 
 class TestStateManagement:
@@ -624,8 +521,8 @@ class TestStateManagement:
         calc1 = avci.AvciCalculator(config)
         
         # Add some fills
-        calc1.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=60))
-        calc1.add_fill(MockFill(timestamp=1100, taker_order_id="B", side=-1, qty=40))
+        calc1.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=60))
+        calc1.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=-1, qty=40))
         
         # Save state
         state = calc1.get_state()
@@ -658,7 +555,7 @@ class TestStateManagement:
 
 
 # =============================================================================
-# 7. Complex Integration Test
+# 6. Complex Integration Test
 # =============================================================================
 
 class TestIntegration:
@@ -670,27 +567,27 @@ class TestIntegration:
         Manual calculation:
             W = 5000ms (window width)
             
-            t=1000: A buys 100
+            t=BASE+1000: A buys 100
                 v_A=100, V=100, N=1, AVCI=1.0
             
-            t=2000: B sells 50
+            t=BASE+2000: B sells 50
                 v_A=100, v_B=50, V=150
                 Σ_2 = 100² + 50² = 10000 + 2500 = 12500
                 AVCI = 12500 / 22500 ≈ 0.5556
             
-            t=3000: A buys 50 (A total = 150)
+            t=BASE+3000: A buys 50 (A total = 150)
                 v_A=150, v_B=50, V=200
                 Σ_2 = 150² + 50² = 22500 + 2500 = 25000
                 AVCI = 25000 / 40000 = 0.625
             
-            t=4000: C buys 30
+            t=BASE+4000: C buys 30
                 v_A=150, v_B=50, v_C=30, V=230
                 Σ_2 = 150² + 50² + 30² = 22500 + 2500 + 900 = 25900
                 AVCI = 25900 / 52900 ≈ 0.4896
             
-            t=6500: evict to 6500 (cutoff = 6500 - 5000 = 1500)
-                Fill at t=1000 evicted (A's first fill of 100)
-                v_A = 50 (only t=3000 fill), v_B=50, v_C=30, V=130
+            t=BASE+6500: evict to BASE+6500 (cutoff = BASE+6500 - 5000 = BASE+1500)
+                Fill at t=BASE+1000 evicted (A's first fill of 100)
+                v_A = 50 (only t=BASE+3000 fill), v_B=50, v_C=30, V=130
                 Σ_2 = 50² + 50² + 30² = 2500 + 2500 + 900 = 5900
                 V² = 130² = 16900
                 AVCI = 5900 / 16900 ≈ 0.3491
@@ -698,35 +595,35 @@ class TestIntegration:
         config = avci.AvciConfig(window_ms=5000)
         calc = avci.AvciCalculator(config)
         
-        # t=1000: A buys 100
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=100))
+        # t=BASE+1000: A buys 100
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=100))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 1
         assert metrics['combined']['avci'] == pytest.approx(1.0)
         
-        # t=2000: B sells 50
-        calc.add_fill(MockFill(timestamp=2000, taker_order_id="B", side=-1, qty=50))
+        # t=BASE+2000: B sells 50
+        calc.add_fill(MockFill(timestamp=BASE_TS + 2000, taker_order_id="B", side=-1, qty=50))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
         # Σ_2 = 12500, V² = 22500, AVCI ≈ 0.5556
         assert metrics['combined']['avci'] == pytest.approx(12500.0 / 22500.0, rel=1e-4)
         
-        # t=3000: A buys 50 (A total = 150)
-        calc.add_fill(MockFill(timestamp=3000, taker_order_id="A", side=1, qty=50))
+        # t=BASE+3000: A buys 50 (A total = 150)
+        calc.add_fill(MockFill(timestamp=BASE_TS + 3000, taker_order_id="A", side=1, qty=50))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 2
         # Σ_2 = 25000, V² = 40000, AVCI = 0.625
         assert metrics['combined']['avci'] == pytest.approx(0.625)
         
-        # t=4000: C buys 30
-        calc.add_fill(MockFill(timestamp=4000, taker_order_id="C", side=1, qty=30))
+        # t=BASE+4000: C buys 30
+        calc.add_fill(MockFill(timestamp=BASE_TS + 4000, taker_order_id="C", side=1, qty=30))
         metrics = calc.get_metrics()
         assert metrics['combined']['N'] == 3
         # Σ_2 = 25900, V² = 52900, AVCI ≈ 0.4896
         assert metrics['combined']['avci'] == pytest.approx(25900.0 / 52900.0, rel=1e-4)
         
-        # t=6500: evict (cutoff = 1500)
-        calc.evict_to(6500)
+        # t=BASE+6500: evict (cutoff = BASE+1500)
+        calc.evict_to(BASE_TS + 6500)
         metrics = calc.get_metrics()
         
         # A's first fill evicted, v_A=50, v_B=50, v_C=30, V=130
@@ -740,15 +637,15 @@ class TestIntegration:
         config = avci.AvciConfig(window_ms=5000)
         calc = avci.AvciCalculator(config)
         
-        calc.add_fill(MockFill(timestamp=1000, taker_order_id="A", side=1, qty=50))
-        calc.add_fill(MockFill(timestamp=2000, taker_order_id="B", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=50))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 2000, taker_order_id="B", side=1, qty=50))
         
         # Verify non-empty
         metrics = calc.get_metrics()
         assert metrics['combined']['avci'] is not None
         
-        # Evict all (cutoff = 10000 - 5000 = 5000, all fills < 5000)
-        calc.evict_to(10000)
+        # Evict all (cutoff = BASE+10000 - 5000 = BASE+5000, all fills < BASE+5000)
+        calc.evict_to(BASE_TS + 10000)
         
         metrics = calc.get_metrics()
         assert metrics['combined']['avci'] is None

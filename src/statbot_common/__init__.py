@@ -3,7 +3,7 @@
 from .sliding_window import SlidingWindow
 from .volatility import compute_volatility
 from .timestamp import normalize_timestamp_to_ms
-from .protocols import HasPrice, HasSize, Trade, L3Trade, MidPrice
+from .protocols import HasPrice, HasSize, Trade, L3Trade, MidPrice, L3Fill
 from .size import compute_total_size
 from .vmf import compute_vmf
 from .markout_skew import (
@@ -21,6 +21,10 @@ from .queue_imbalance import (
     compute_queue_diff,
     QueueImbalanceConfig,
     QueueImbalanceCalculator,
+)
+from .avci import (
+    AvciConfig,
+    AvciCalculator,
 )
 from importlib.metadata import PackageNotFoundError, version
 
@@ -46,6 +50,7 @@ __all__ = [
     "Trade",
     "L3Trade",
     "MidPrice",
+    "L3Fill",
     "compute_total_size",
     "compute_vmf",
     "MarkoutSkewCalculator",
@@ -60,4 +65,6 @@ __all__ = [
     "compute_queue_diff",
     "QueueImbalanceConfig",
     "QueueImbalanceCalculator",
+    "AvciConfig",
+    "AvciCalculator",
 ] 
