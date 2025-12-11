@@ -1,3 +1,4 @@
+import logging
 from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
@@ -158,6 +159,12 @@ class QueueImbalanceCalculator:
         now_ms = normalize_timestamp_to_ms(t_ms)
         if self._last_time_ms is not None and now_ms < self._last_time_ms:
             # Enforce monotonic time progression
+            logging.warning(
+                "QueueImbalance received out-of-order timestamp: %s < last %s; "
+                "clamping to last seen time",
+                now_ms,
+                self._last_time_ms,
+            )
             now_ms = self._last_time_ms
         self._last_time_ms = now_ms
 

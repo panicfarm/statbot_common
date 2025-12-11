@@ -77,6 +77,8 @@ class MarkoutSkewCalculator:
         
         # Pending observations awaiting horizon completion
         self.pending_observations: List[MarkoutObservation] = []
+        # Track last input timestamp for order diagnostics
+        self._last_input_time_ms: Optional[int] = None
         
         # Event-time horizon state
         if config.horizon_type == "event":
@@ -103,6 +105,18 @@ class MarkoutSkewCalculator:
         """
         if not trades:
             return []
+
+        normalized_timestamp_ms = normalize_timestamp_to_ms(timestamp_ms)
+        if (
+            self._last_input_time_ms is not None
+            and normalized_timestamp_ms < self._last_input_time_ms
+        ):
+            logging.warning(
+                "MarkoutSkew received out-of-order timestamp: %s < last %s",
+                normalized_timestamp_ms,
+                self._last_input_time_ms,
+            )
+        self._last_input_time_ms = normalized_timestamp_ms
         
         # Group trades by aggressor side (§2)
         buy_trades = [t for t in trades if t.aggressor_sign == 1]
@@ -112,13 +126,13 @@ class MarkoutSkewCalculator:
         
         # Create buy observation if buy-aggressor trades exist
         if buy_trades:
-            obs = self._create_observation(timestamp_ms, 1, pre_trade_mid)
+            obs = self._create_observation(normalized_timestamp_ms, 1, pre_trade_mid)
             created_observations.append(obs)
             self.pending_observations.append(obs)
         
         # Create sell observation if sell-aggressor trades exist  
         if sell_trades:
-            obs = self._create_observation(timestamp_ms, -1, pre_trade_mid)
+            obs = self._create_observation(normalized_timestamp_ms, -1, pre_trade_mid)
             created_observations.append(obs)
             self.pending_observations.append(obs)
         
