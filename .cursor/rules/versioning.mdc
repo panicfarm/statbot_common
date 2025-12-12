@@ -1,0 +1,22 @@
+---
+description: Versioning and release workflow for statbot_common package.
+globs:
+  - "pyproject.toml"
+  - "README.md"
+alwaysApply: false
+---
+# Versioning Rules
+
+## Git Tags
+- When you explicitly want to release a new version (committing changes to `pyproject.toml` or `README.md`), always create and push a corresponding git tag.
+- Tag format: `v{VERSION}` (e.g., `v0.7.0`)
+- Commands:
+  ```bash
+  git tag -a v0.7.0 -m "Release v0.7.0"
+  git push origin v0.7.0
+  ```
+
+## Version Locations
+- Primary version: `pyproject.toml` → `[project]` → `version`
+- Documentation: `README.md` → Installation section references the current version
+- Keep both in sync when releasing.
