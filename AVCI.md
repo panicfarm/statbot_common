@@ -82,9 +82,26 @@ Range:
 \text{AVCI}_{\text{excess}}(T) \in [\,0,\,N(T)-1\,].
 ```
 
-Optionally, a normalized variant
-$\text{AVCI}_{\text{norm}}(T) := \frac{\text{AVCI}_{\text{excess}}(T)}{N(T)-1}$ for $N(T) > 1$
-lies in $[0,1]$ and can be used for cross-window comparisons when $N(T)$ varies.
+---
+
+### Normalized AVCI (Cross-Window Comparable)
+
+```math
+\text{AVCI}_{\text{norm}}(T) := \frac{\text{AVCI}_{\text{excess}}(T)}{N(T)-1} = \frac{N(T) \cdot \text{AVCI}(T) - 1}{N(T) - 1}
+\quad \text{for } N(T) > 1.
+```
+
+Range:
+
+```math
+\text{AVCI}_{\text{norm}}(T) \in [0, 1].
+```
+
+- = 0 when volume is split equally across all $N(T)$ takers (minimum concentration).
+- = 1 when one taker accounts for all volume (maximum concentration).
+- Edge case: when $N(T) = 1$, define $\text{AVCI}_{\text{norm}} := 1$ (a single taker is maximally concentrated by definition).
+
+This metric enables cross-window comparisons regardless of the number of active takers, making it suitable for time-series analysis and threshold-based alerts.
 
 ---
 
@@ -150,7 +167,7 @@ Returned structure:
 
 ```
 {
-  combined: { avci, avci_excess, N, V },
+  combined: { avci, avci_excess, avci_norm, N, V },
   buy:      { ... },
   sell:     { ... }
 }
@@ -178,8 +195,9 @@ Returned structure:
 
 Returned per bucket:
 
-- `avci`
-- `avci_excess`
+- `avci` — raw Herfindahl index, range $[1/N, 1]$
+- `avci_excess` — excess concentration, range $[0, N-1]$
+- `avci_norm` — normalized concentration, range $[0, 1]$ (spikes when concentrated)
 - `N`, `V`
 
 

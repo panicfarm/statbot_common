@@ -146,15 +146,15 @@ class MarkoutSkewCalculator:
         return created_observations
     
     def _create_observation(self, timestamp_ms: int, side: Literal[1, -1], pre_trade_mid: float) -> MarkoutObservation:
-        """Create a single markout observation with appropriate horizon scheduling."""
-        # Ensure timestamp_ms is normalized
-        normalized_timestamp_ms = normalize_timestamp_to_ms(timestamp_ms)
+        """Create a single markout observation with appropriate horizon scheduling.
         
+        Note: timestamp_ms is expected to already be normalized by the caller.
+        """
         if self.config.horizon_type == "clock":
             # Clock-time horizon: u = t + τ
-            horizon_time_ms = normalized_timestamp_ms + self.config.tau_ms
+            horizon_time_ms = timestamp_ms + self.config.tau_ms
             return MarkoutObservation(
-                start_time_ms=normalized_timestamp_ms,
+                start_time_ms=timestamp_ms,
                 horizon_time_ms=horizon_time_ms,
                 side=side,
                 pre_trade_mid=pre_trade_mid
@@ -164,7 +164,7 @@ class MarkoutSkewCalculator:
             # Use current trade counter + K (counter will be updated after all observations are created)
             target_trade_index = self.trade_counter + self.config.k_trades
             obs = MarkoutObservation(
-                start_time_ms=normalized_timestamp_ms,
+                start_time_ms=timestamp_ms,
                 horizon_time_ms=-1,  # Placeholder, will be set when target trade occurs
                 side=side,
                 pre_trade_mid=pre_trade_mid

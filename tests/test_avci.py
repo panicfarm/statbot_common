@@ -52,6 +52,7 @@ class TestEdgeCases:
         
         assert metrics['combined']['avci'] is None
         assert metrics['combined']['avci_excess'] is None
+        assert metrics['combined']['avci_norm'] is None
         assert metrics['combined']['N'] == 0
         assert metrics['combined']['V'] == 0
 
@@ -63,6 +64,7 @@ class TestEdgeCases:
             v_A = 100, V = 100, Σ_2 = 100² = 10000, N = 1
             AVCI = 10000 / 100² = 1.0
             AVCI_excess = 1 * 1.0 - 1 = 0.0
+            AVCI_norm = 1.0 (N=1 edge case: single taker is max concentration)
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
@@ -77,6 +79,8 @@ class TestEdgeCases:
         assert float(combined['V']) == pytest.approx(100.0)
         assert float(combined['avci']) == pytest.approx(1.0)
         assert float(combined['avci_excess']) == pytest.approx(0.0)
+        # N=1 edge case: avci_norm = 1.0 (single taker is max concentration)
+        assert float(combined['avci_norm']) == pytest.approx(1.0)
 
     def test_single_taker_multiple_fills(self):
         """Test AVCI with one taker with multiple fills.
@@ -113,6 +117,7 @@ class TestEdgeCases:
             Σ_2 = 50² + 50² = 2500 + 2500 = 5000
             AVCI = 5000 / 10000 = 0.5
             AVCI_excess = 2 * 0.5 - 1 = 0.0
+            AVCI_norm = 0.0 / (2-1) = 0.0
         
         Two takers with equal volume → AVCI = 1/N = 0.5.
         """
@@ -131,6 +136,8 @@ class TestEdgeCases:
         assert float(combined['avci']) == pytest.approx(0.5)
         # AVCI_excess = 2 * 0.5 - 1 = 0.0
         assert float(combined['avci_excess']) == pytest.approx(0.0)
+        # AVCI_norm = 0.0 / (2-1) = 0.0 (perfectly distributed)
+        assert float(combined['avci_norm']) == pytest.approx(0.0)
 
     def test_three_takers_equal_volume(self):
         """Test AVCI with three takers having equal volume.
@@ -142,6 +149,7 @@ class TestEdgeCases:
             V² = 90² = 8100
             AVCI = 2700 / 8100 = 1/3 ≈ 0.333333
             AVCI_excess = 3 * (1/3) - 1 = 0.0
+            AVCI_norm = 0.0 / (3-1) = 0.0
         
         Three takers with equal volume → AVCI = 1/3.
         """
@@ -161,6 +169,8 @@ class TestEdgeCases:
         assert float(combined['avci']) == pytest.approx(1.0 / 3.0)
         # AVCI_excess = 3 * (1/3) - 1 = 0.0
         assert float(combined['avci_excess']) == pytest.approx(0.0)
+        # AVCI_norm = 0.0 / (3-1) = 0.0 (perfectly distributed)
+        assert float(combined['avci_norm']) == pytest.approx(0.0)
 
 
 # =============================================================================
@@ -180,6 +190,7 @@ class TestNonTrivialConcentration:
             V² = 100² = 10000
             AVCI = 6800 / 10000 = 0.68
             AVCI_excess = 2 * 0.68 - 1 = 0.36
+            AVCI_norm = 0.36 / (2-1) = 0.36
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
@@ -196,6 +207,8 @@ class TestNonTrivialConcentration:
         assert float(combined['avci']) == pytest.approx(0.68)
         # AVCI_excess = 2 * 0.68 - 1 = 0.36
         assert float(combined['avci_excess']) == pytest.approx(0.36)
+        # AVCI_norm = 0.36 / (2-1) = 0.36
+        assert float(combined['avci_norm']) == pytest.approx(0.36)
 
     def test_three_takers_varying_volumes(self):
         """Test AVCI with three takers having varying volumes.
@@ -207,6 +220,7 @@ class TestNonTrivialConcentration:
             V² = 100² = 10000
             AVCI = 4600 / 10000 = 0.46
             AVCI_excess = 3 * 0.46 - 1 = 0.38
+            AVCI_norm = 0.38 / (3-1) = 0.19
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
@@ -224,6 +238,8 @@ class TestNonTrivialConcentration:
         assert float(combined['avci']) == pytest.approx(0.46)
         # AVCI_excess = 3 * 0.46 - 1 = 0.38
         assert float(combined['avci_excess']) == pytest.approx(0.38)
+        # AVCI_norm = 0.38 / (3-1) = 0.19
+        assert float(combined['avci_norm']) == pytest.approx(0.19)
 
     def test_multiple_fills_same_taker_accumulated(self):
         """Test AVCI with multiple fills per taker (accumulation).
@@ -235,6 +251,7 @@ class TestNonTrivialConcentration:
             V² = 100² = 10000
             AVCI = 5200 / 10000 = 0.52
             AVCI_excess = 2 * 0.52 - 1 = 0.04
+            AVCI_norm = 0.04 / (2-1) = 0.04
         """
         config = avci.AvciConfig(window_ms=10000)
         calc = avci.AvciCalculator(config)
@@ -255,6 +272,8 @@ class TestNonTrivialConcentration:
         assert float(combined['avci']) == pytest.approx(0.52)
         # AVCI_excess = 2 * 0.52 - 1 = 0.04
         assert float(combined['avci_excess']) == pytest.approx(0.04)
+        # AVCI_norm = 0.04 / (2-1) = 0.04
+        assert float(combined['avci_norm']) == pytest.approx(0.04)
 
 
 # =============================================================================
@@ -649,5 +668,69 @@ class TestIntegration:
         
         metrics = calc.get_metrics()
         assert metrics['combined']['avci'] is None
+        assert metrics['combined']['avci_norm'] is None
         assert metrics['combined']['N'] == 0
         assert metrics['combined']['V'] == 0
+
+
+# =============================================================================
+# 7. Normalized AVCI Tests
+# =============================================================================
+
+class TestNormalizedAvci:
+    """Test avci_norm metric specifically."""
+
+    def test_avci_norm_single_taker_is_max(self):
+        """Test that N=1 returns avci_norm=1.0 (max concentration)."""
+        config = avci.AvciConfig(window_ms=10000)
+        calc = avci.AvciCalculator(config)
+        
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=100))
+        
+        metrics = calc.get_metrics()
+        combined = metrics['combined']
+        
+        assert combined['N'] == 1
+        # N=1 edge case: single taker is max concentration -> avci_norm = 1.0
+        assert float(combined['avci_norm']) == pytest.approx(1.0)
+
+    def test_avci_norm_equal_distribution_is_zero(self):
+        """Test that equal distribution returns avci_norm=0.0."""
+        config = avci.AvciConfig(window_ms=10000)
+        calc = avci.AvciCalculator(config)
+        
+        # 5 takers with equal volume
+        for i, taker in enumerate(['A', 'B', 'C', 'D', 'E']):
+            calc.add_fill(MockFill(timestamp=BASE_TS + 1000 + i*100, taker_order_id=taker, side=1, qty=20))
+        
+        metrics = calc.get_metrics()
+        combined = metrics['combined']
+        
+        assert combined['N'] == 5
+        # Equal distribution -> avci_norm = 0.0
+        assert float(combined['avci_norm']) == pytest.approx(0.0)
+
+    def test_avci_norm_max_concentration_two_takers(self):
+        """Test that extreme concentration approaches avci_norm=1.0.
+        
+        Manual calculation:
+            Fills: taker=A, qty=99; taker=B, qty=1
+            v_A = 99, v_B = 1, V = 100
+            Σ_2 = 99² + 1² = 9801 + 1 = 9802
+            V² = 100² = 10000
+            AVCI = 9802 / 10000 = 0.9802
+            AVCI_excess = 2 * 0.9802 - 1 = 0.9604
+            AVCI_norm = 0.9604 / (2-1) = 0.9604
+        """
+        config = avci.AvciConfig(window_ms=10000)
+        calc = avci.AvciCalculator(config)
+        
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1000, taker_order_id="A", side=1, qty=99))
+        calc.add_fill(MockFill(timestamp=BASE_TS + 1100, taker_order_id="B", side=1, qty=1))
+        
+        metrics = calc.get_metrics()
+        combined = metrics['combined']
+        
+        assert combined['N'] == 2
+        # High concentration: avci_norm ≈ 0.9604
+        assert float(combined['avci_norm']) == pytest.approx(0.9604)

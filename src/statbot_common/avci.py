@@ -95,6 +95,7 @@ class _AvciBucket:
             return {
                 "avci": None,
                 "avci_excess": None,
+                "avci_norm": None,
                 "N": 0,
                 "V": Decimal("0"),
             }
@@ -102,9 +103,18 @@ class _AvciBucket:
         avci = self._sigma_2 / (self._V * self._V)
         avci_excess = Decimal(self._N) * avci - Decimal("1")
 
+        # Normalized AVCI in [0, 1]
+        # Spikes to 1 when concentrated, 0 when distributed
+        if self._N > 1:
+            avci_norm = avci_excess / Decimal(self._N - 1)
+        else:
+            # If N=1, it is maximally concentrated -> 1.0
+            avci_norm = Decimal("1")
+
         return {
             "avci": avci,
             "avci_excess": avci_excess,
+            "avci_norm": avci_norm,
             "N": self._N,
             "V": self._V,
         }
