@@ -2,22 +2,29 @@ import math
 import logging
 from typing import List, Tuple, Optional
 from .timestamp import normalize_timestamp_to_ms
-from .protocols import HasPrice
+from .protocols import HasLogPrice
 
 def compute_volatility(
-    data_points: List[Tuple[int, HasPrice]],
+    data_points: List[Tuple[int, HasLogPrice]],
 ) -> Optional[float]:
     """
     Compute volatility from a list of (timestamp, data) tuples.
 
     This function accounts for uneven time intervals between data points
     and automatically normalizes timestamps to milliseconds.
-    The data objects are expected to conform to the HasPrice protocol.
+    The data objects are expected to conform to the HasLogPrice protocol.
+
+    IMPORTANT: The caller is responsible for computing the log-price (or any
+    other log-transformed coordinate such as log-odds/logit) before passing
+    data to this function. This allows domain-specific transforms (e.g.,
+    clipping probabilities, converting to odds) to be handled at the
+    application layer.
 
     Args:
         data_points: A list of tuples, where each tuple contains a
                      Unix timestamp (s, ms, us, or ns) and an object
-                     with a 'price' attribute.
+                     with a 'log_price' attribute (the log of the price,
+                     or log-odds, or any log-transformed coordinate).
 
     Returns:
         The calculated volatility per minute, or None if computation is not possible.
@@ -29,15 +36,15 @@ def compute_volatility(
     # Extract log-prices and normalize timestamps
     log_price_data = []
     for ts, data in data_points:
-        if hasattr(data, 'price'):
+        if hasattr(data, 'log_price'):
             try:
                 log_price_data.append(
-                    (normalize_timestamp_to_ms(ts), math.log(data.price))
+                    (normalize_timestamp_to_ms(ts), float(data.log_price))
                 )
             except (ValueError, TypeError):
-                logging.warning(f"Could not process price: {data.price}. Skipping entry.")
+                logging.warning(f"Could not process log_price: {data.log_price}. Skipping entry.")
         else:
-            logging.warning(f"Data object missing 'price' attribute. Skipping entry.")
+            logging.warning(f"Data object missing 'log_price' attribute. Skipping entry.")
 
 
     if len(log_price_data) < 2:
@@ -94,4 +101,4 @@ def compute_volatility(
             return None
     else:
         logging.debug("Volatility calc: Zero total time interval, cannot compute volatility.")
-        return None 
+        return None

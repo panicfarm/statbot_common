@@ -3,7 +3,7 @@
 from .sliding_window import SlidingWindow
 from .volatility import compute_volatility
 from .timestamp import normalize_timestamp_to_ms
-from .protocols import HasPrice, HasSize, Trade, L3Trade, MidPrice, L3Fill
+from .protocols import HasPrice, HasSize, HasLogPrice, Trade, L3Trade, MidPrice, L3Fill
 from .size import compute_total_size
 from .vmf import compute_vmf
 from .markout_skew import (
@@ -47,6 +47,7 @@ __all__ = [
     "normalize_timestamp_to_ms",
     "HasPrice",
     "HasSize",
+    "HasLogPrice",
     "Trade",
     "L3Trade",
     "MidPrice",

@@ -9,14 +9,14 @@ This package provides common, reusable utilities for statistical analysis of mar
 - **Markout Skew**: Computes side-conditional markouts and skew using completion-time sliding windows; supports clock-time and event-time horizons. Found in `markout_skew.py`.
 - **Queue Imbalance**: Calculates depth-weighted queue imbalance using exponential distance weighting and time-weighted averaging. Found in `queue_imbalance.py`.
 - **AVCI**: Aggressive Volume Concentration Index measuring how concentrated aggressive volume is within a time window. Found in `avci.py`.
-- **Protocols (`HasPrice`, `HasSize`, `L3Trade`, `MidPrice`, `L3Fill`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
+- **Protocols (`HasPrice`, `HasSize`, `HasLogPrice`, `L3Trade`, `MidPrice`, `L3Fill`)**: Define the expected structure for data objects, enabling type-safe and flexible metric calculations.
 
 
 ## Installation
 
 You can install this package directly from GitHub.
 
-### Latest Version (v0.7.0)
+### Latest Version (v0.8.0)
 
 For new projects, install the latest version to get all features and the most flexible architecture:
 ```bash
@@ -24,7 +24,7 @@ pip install git+https://github.com/panicfarm/statbot_common.git
 ```
 Or to install a specific version:
 ```bash
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.7.0
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.8.0
 ```
 
 ### Legacy Version (v2.0.0)
@@ -40,7 +40,50 @@ For development (includes pytest):
 pip install git+https://github.com/panicfarm/statbot_common.git[dev]
 
 # For a specific version
-pip install git+https://github.com/panicfarm/statbot_common.git@v0.7.0#egg=statbot_common[dev]
+pip install git+https://github.com/panicfarm/statbot_common.git@v0.8.0#egg=statbot_common[dev]
+```
+
+## What's New in v0.8.0
+
+**BREAKING CHANGE**: `compute_volatility` now requires the caller to provide `log_price` instead of `price`.
+
+- The library no longer computes `log()` internally for volatility calculations.
+- Data objects must now conform to the `HasLogPrice` protocol (provide a `log_price: float` attribute).
+- This change allows domain-specific transforms (e.g., clipping probabilities, converting to odds/logit) to be handled at the application layer.
+
+### Migration Guide
+
+**Before (v0.7.x)**:
+```python
+@dataclass
+class Trade:
+    price: float
+
+data = [(ts, Trade(price=100.0)), ...]
+volatility = compute_volatility(data)  # Library called log(price) internally
+```
+
+**After (v0.8.0)**:
+```python
+import math
+
+@dataclass
+class LogPriceData:
+    log_price: float
+
+# Caller computes log_price (or log-odds, logit, etc.)
+data = [(ts, LogPriceData(log_price=math.log(100.0))), ...]
+volatility = compute_volatility(data)  # Library uses log_price directly
+```
+
+For prediction markets, you might use log-odds instead:
+```python
+def logit(p: float, eps: float = 0.04) -> float:
+    """Convert probability to log-odds with edge clipping."""
+    p = max(eps, min(1 - eps, p))
+    return math.log(p / (1 - p))
+
+data = [(ts, LogPriceData(log_price=logit(prob))), ...]
 ```
 
 ## What's New in v0.7.0
@@ -85,9 +128,9 @@ These additions implement completion-time sliding windows, clock/event horizon s
 ## Quick Start
 
 ```python
-from statbot_common import SlidingWindow, compute_volatility, compute_total_size, compute_vmf, Trade
+import math
+from statbot_common import SlidingWindow, compute_volatility, compute_total_size, compute_vmf
 from dataclasses import dataclass
-import time
 from typing import Optional
 
 # Define a data structure for our trades
@@ -95,17 +138,19 @@ from typing import Optional
 class Trade:
     timestamp: int
     price: float
+    log_price: float  # Required for compute_volatility (v0.8.0+)
     quantity: float
     size: float
-    side: Optional[str] = None # 'buy', 'sell', or None for combined
+    side: Optional[str] = None  # 'buy', 'sell', or None for combined
 
 # Create a sliding window that holds 60 seconds of data
 trade_window = SlidingWindow(window_duration_ms=60 * 1000)
 
 # Add rich trade objects to the window
-trade_window.add(1678886400, Trade(timestamp=1678886400000, price=100.5, quantity=150.0, size=1.5))      # seconds
-trade_window.add(1678886410000, Trade(timestamp=1678886410000, price=101.2, quantity=200.0, size=2.0))   # milliseconds
-trade_window.add(1678886420000000, Trade(timestamp=1678886420000, price=101.8, quantity=120.0, size=0.8)) # microseconds
+# Note: log_price is computed by the caller
+trade_window.add(1678886400, Trade(timestamp=1678886400000, price=100.5, log_price=math.log(100.5), quantity=150.0, size=1.5))
+trade_window.add(1678886410000, Trade(timestamp=1678886410000, price=101.2, log_price=math.log(101.2), quantity=200.0, size=2.0))
+trade_window.add(1678886420000000, Trade(timestamp=1678886420000, price=101.8, log_price=math.log(101.8), quantity=120.0, size=0.8))
 
 # Get current data in the window
 recent_trades = trade_window.get_window_data()
@@ -143,7 +188,7 @@ window = SlidingWindow(window_duration_ms=30000)  # 30 second window
 #### Methods
 
 - **`add(timestamp, data)`**: Add a data point to the window
-  - `timestamp`: Unix timestamp (auto-detects s/ms/μs/ns based on magnitude)
+  - `timestamp`: Unix timestamp (auto-detects s/ms/us/ns based on magnitude)
   - `data`: Any data object to store (e.g., a `dataclass` or custom object).
 
 - **`get_window_data()`**: Get all current data in the window
@@ -156,7 +201,7 @@ window = SlidingWindow(window_duration_ms=30000)  # 30 second window
 - **`__len__()`**: Get the number of items currently in the window.
 
 - **`purge(window_end_timestamp_ms)`**: Explicitly remove data points older than the specified window end time
-  - `window_end_timestamp_ms`: Unix timestamp marking the absolute end of the desired window (auto-detects s/ms/μs/ns)
+  - `window_end_timestamp_ms`: Unix timestamp marking the absolute end of the desired window (auto-detects s/ms/us/ns)
   - Removes all data points whose timestamps are older than `(window_end_timestamp_ms - window_duration_ms)`
   - Provides precise control over window boundaries for time-sensitive applications
 
@@ -258,7 +303,7 @@ print(skew_stats)  # {'mplus': ..., 'mminus': ..., 'skew': ..., 'n_buys': ..., '
   - `tau_ms`: Clock-time horizon in milliseconds (required when `horizon_type == "clock"`)
   - `k_trades`: Event-time horizon in number of trades (required when `horizon_type == "event"`)
   - `window_ms`: Completion-time sliding window size (default 300000 ms)
-- **Returns**: `get_markout_skew(T)` → `Dict[str, Optional[float]]` with keys `mplus`, `mminus`, `skew`, `n_buys`, `n_sells`.
+- **Returns**: `get_markout_skew(T)` -> `Dict[str, Optional[float]]` with keys `mplus`, `mminus`, `skew`, `n_buys`, `n_sells`.
 - **Notes**: Timestamps auto-normalize to milliseconds; missing side counts yield `None` for the corresponding means and `skew`.
 
 ### Queue Imbalance
@@ -316,13 +361,13 @@ print(f"Manual IB calculation: {ib}")
   - `half_life_ticks`: Exponential decay half-life in ticks (default 0.5)
   - `window_ms`: Time-weighted averaging window in milliseconds (default 30000)
 - **Returns**: 
-  - `update_from_book(...)` → `Optional[Decimal]` (instantaneous IB_t or `None`)
-  - `get_time_weighted_mean(t_ms)` → `Optional[Decimal]` (time-weighted mean or `None`)
+  - `update_from_book(...)` -> `Optional[Decimal]` (instantaneous IB_t or `None`)
+  - `get_time_weighted_mean(t_ms)` -> `Optional[Decimal]` (time-weighted mean or `None`)
 - **Notes**: Uses tick-normalized grid with zero-padding for missing levels; IB_t ranges from -1 (ask pressure) to +1 (bid pressure); requires `Decimal` for all price/size inputs.
 
 ### AVCI (Aggressive Volume Concentration Index)
 
-Measures how concentrated aggressive volume is within a time window — whether a few large taker orders dominate, or volume is spread across many small taker orders.
+Measures how concentrated aggressive volume is within a time window - whether a few large taker orders dominate, or volume is spread across many small taker orders.
 
 ```python
 from dataclasses import dataclass
@@ -358,12 +403,13 @@ calc.evict_to(12000)  # Evicts fills older than 12000 - 10000 = 2000ms
 - **Protocol**: `L3Fill` (requires `timestamp`, `taker_order_id`, `side`, `qty`)
 - **Configuration**:
   - `window_ms`: Sliding window width in milliseconds
-- **Returns**: `get_metrics()` → `Dict` with keys `combined`, `buy`, `sell`, each containing:
+- **Returns**: `get_metrics()` -> `Dict` with keys `combined`, `buy`, `sell`, each containing:
   - `avci`: Concentration index (1/N for equal split, 1 for single taker); `None` if V=0
   - `avci_excess`: N * AVCI - 1 (0 for equal split); `None` if V=0
+  - `avci_norm`: Normalized AVCI in [0, 1] (0 for equal split, 1 for single taker); `None` if V=0
   - `N`: Count of active taker IDs in window
   - `V`: Total volume in window
-- **Notes**: AVCI ∈ [1/N, 1]; higher values indicate more concentrated flow.
+- **Notes**: AVCI is in [1/N, 1]; higher values indicate more concentrated flow.
 
 ### Data Protocols
 
@@ -371,6 +417,7 @@ To enable flexible and type-safe calculations, `statbot_common` uses `Protocol` 
 
 - **`HasPrice`**: Requires the object to have a `price: float` attribute.
 - **`HasSize`**: Requires the object to have a `size: float` attribute.
+- **`HasLogPrice`**: Requires the object to have a `log_price: float` attribute. Used by `compute_volatility`. The caller is responsible for computing the log-price (or log-odds, logit, etc.) before passing to the library.
 - **`Trade`**: Requires the object to have `timestamp: int`, `quantity: float`, and optionally `side: Optional[str]` attributes.
 
 You can use a `dataclass` or any custom class that meets these requirements:
@@ -378,31 +425,49 @@ You can use a `dataclass` or any custom class that meets these requirements:
 ```python
 from dataclasses import dataclass
 from typing import Optional
+import math
 
 @dataclass
 class MyTrade:
     timestamp: int
     quantity: float
-    price: float  # Conforms to HasPrice
-    size: float   # Conforms to HasSize
+    price: float      # Conforms to HasPrice
+    log_price: float  # Conforms to HasLogPrice (compute as math.log(price) or logit(prob))
+    size: float       # Conforms to HasSize
     side: Optional[str] = None
-    exchange: str # Extra data is fine
+    exchange: str = ""  # Extra data is fine
 ```
 
 ### Computation Functions
 
 #### `compute_volatility`
 
-Calculates volatility from a list of time-series data points.
+Calculates volatility from a list of time-series data points containing log-prices.
 
 ```python
+import math
 from statbot_common import compute_volatility
+from dataclasses import dataclass
 
-# Data must contain objects conforming to HasPrice
-volatility = compute_volatility(trade_window.get_window_data())
+@dataclass
+class LogPriceData:
+    log_price: float
+
+# Caller computes log_price before passing to the library
+prices = [100.0, 101.2, 100.8, 102.0]
+timestamps = [1678886400000, 1678886410000, 1678886420000, 1678886430000]
+
+data = [(ts, LogPriceData(log_price=math.log(p))) for ts, p in zip(timestamps, prices)]
+volatility = compute_volatility(data)
 print(f"Volatility per minute: {volatility:.8f}")
 ```
 
 - **Module**: `statbot_common.volatility`
-- **Parameters**: `List[Tuple[int, HasPrice]]`
-  - A list of (timestamp, data) tuples, where `
+- **Parameters**: `List[Tuple[int, HasLogPrice]]`
+  - A list of (timestamp, data) tuples, where `data` has a `.log_price` attribute.
+  - The `log_price` should be the log of the price (or log-odds/logit for prediction markets).
+- **Returns**: `float` (volatility per minute) or `None` if computation is not possible.
+- **Notes**: 
+  - Timestamps auto-normalize to milliseconds.
+  - Requires at least 2 valid data points.
+  - The caller is responsible for computing `log_price` - this allows domain-specific transforms (clipping, odds conversion) at the application layer.

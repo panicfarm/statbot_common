@@ -8,6 +8,16 @@ class HasSize(Protocol):
     """A protocol for objects that have a size attribute."""
     size: float
 
+class HasLogPrice(Protocol):
+    """A protocol for objects that have a log_price attribute.
+    
+    Used by compute_volatility. The caller is responsible for computing
+    the log-price (or log-odds, logit, etc.) before passing to the library.
+    This allows domain-specific transforms (e.g., clipping, odds conversion)
+    to be handled at the application layer.
+    """
+    log_price: float
+
 class Trade(Protocol):
     """A protocol for trade objects with timestamp, quantity, and optional side."""
     timestamp: int  # Unix timestamp (any unit - will be normalized)
